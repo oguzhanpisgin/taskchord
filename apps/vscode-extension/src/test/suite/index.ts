@@ -48,7 +48,9 @@ async function runOwnedVerificationTaskSmoke(folder: vscode.WorkspaceFolder): Pr
   ];
   const scripts: VerificationScript[] = definitions.map(({ kind, name }) => {
     const body = packageJson.scripts?.[name];
-    assert.equal(typeof body, "string", `Root package.json must define ${name}.`);
+    if (typeof body !== "string") {
+      throw new Error(`Root package.json must define ${name}.`);
+    }
     return {
       kind,
       name,
