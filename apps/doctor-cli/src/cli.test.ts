@@ -11,17 +11,33 @@ const report: DoctorReport = {
     architecture: "x64",
     release: "10.0.26100",
   },
+  targets: [
+    {
+      id: "windows-host",
+      kind: "windows",
+      label: "Windows host",
+      facts: {
+        kind: "windows",
+        platform: "win32",
+        architecture: "x64",
+        release: "10.0.26100",
+      },
+    },
+  ],
   checks: [
     {
       id: "environment",
+      targetId: "windows-host",
       label: "Environment",
       status: "ready",
+      source: "runtime",
       message: "Detected Windows.",
       evidence: {
         platform: "win32",
         architecture: "x64",
         release: "10.0.26100",
       },
+      durationMs: 1,
     },
   ],
   summary: {
@@ -52,10 +68,13 @@ describe("executeCli", () => {
         ...report.checks,
         {
           id: "node",
+          targetId: "windows-host",
           label: "Node.js",
           status: "ready",
+          source: "process",
           message: "Detected Node.js.",
           evidence: { version: "24.19.0" },
+          durationMs: 1,
         },
       ],
       summary: { status: "ready", ready: 2, unverified: 0, failed: 0 },
@@ -69,6 +88,7 @@ describe("executeCli", () => {
     expect(text.stdout).toContain("Environment:  Windows");
     expect(text.stdout).toContain("- Environment: READY");
     expect(text.stdout).toContain("- Node.js: READY");
+    expect(text.stdout).toContain("Target: Windows host");
     expect(JSON.parse(json.stdout)).toEqual(multiCheckReport);
   });
 
@@ -95,10 +115,13 @@ describe("executeCli", () => {
       checks: [
         {
           id: "environment",
+          targetId: "unknown-host",
           label: "Environment",
           status: "failed",
+          source: "runtime",
           message: "Environment detection failed: unavailable",
           evidence: {},
+          durationMs: 0,
         },
       ],
       summary: { status: "failed", ready: 0, unverified: 0, failed: 1 },

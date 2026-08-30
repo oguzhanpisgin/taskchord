@@ -31,8 +31,13 @@ Options:
 function formatDoctorText(report: DoctorReport): string {
   const status = report.summary.status.toUpperCase();
   const kind = environmentDisplayName(report.environment.kind);
+  const targetLabels = new Map(report.targets.map((target) => [target.id, target.label]));
   const checks = report.checks
-    .map((check) => `- ${check.label}: ${check.status.toUpperCase()}\n  ${check.message}`)
+    .map((check) => {
+      const nextAction =
+        check.nextAction === undefined ? "" : `\n  Next action: ${check.nextAction}`;
+      return `- ${check.label}: ${check.status.toUpperCase()}\n  Target: ${targetLabels.get(check.targetId) ?? check.targetId}\n  ${check.message}${nextAction}`;
+    })
     .join("\n");
 
   return `TaskChord Doctor

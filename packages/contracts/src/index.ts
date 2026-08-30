@@ -1,10 +1,12 @@
-export const DOCTOR_SCHEMA_VERSION = 1 as const;
+export const DOCTOR_SCHEMA_VERSION = 2 as const;
 
 export type EnvironmentKind = "windows" | "wsl" | "macos" | "linux" | "unknown";
 
 export type CheckStatus = "ready" | "unverified" | "failed";
 
 export type DoctorCheckId = string;
+
+export type DoctorCheckSource = "runtime" | "process";
 
 export interface EnvironmentFacts {
   kind: EnvironmentKind;
@@ -13,12 +15,23 @@ export interface EnvironmentFacts {
   release: string;
 }
 
+export interface DoctorTarget {
+  id: string;
+  kind: EnvironmentKind;
+  label: string;
+  facts: EnvironmentFacts;
+}
+
 export interface DoctorCheck {
   id: DoctorCheckId;
+  targetId: string;
   label: string;
   status: CheckStatus;
+  source: DoctorCheckSource;
   message: string;
   evidence: Record<string, string>;
+  durationMs: number;
+  nextAction?: string;
 }
 
 export interface DoctorSummary {
@@ -33,6 +46,7 @@ export interface DoctorReport {
   generatedAt: string;
   /** The execution environment of the TaskChord doctor process. */
   environment: EnvironmentFacts;
+  targets: DoctorTarget[];
   checks: DoctorCheck[];
   summary: DoctorSummary;
 }
