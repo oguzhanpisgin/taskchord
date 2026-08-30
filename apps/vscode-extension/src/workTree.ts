@@ -33,6 +33,14 @@ export class WorkTreeDataProvider implements vscode.TreeDataProvider<WorkTreeMod
         arguments: [model],
       };
     }
+    if (model.kind === "runner") {
+      item.tooltip = model.tooltip;
+      item.contextValue = "taskchord.runnerStatus";
+      item.command = {
+        command: "taskchord.runners.refresh",
+        title: "Refresh Runner Status",
+      };
+    }
     return item;
   }
 

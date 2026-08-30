@@ -78,6 +78,7 @@ describe("optional runner observations", () => {
       freshness: "fresh",
       counts: { running: 2, blocked: 1 },
       associations: { current: 1, other: 1, unknown: 0, truncated: false },
+      associationRepository: "owner/repo",
     });
     expect(JSON.stringify(result)).not.toContain("last_message");
     expect(JSON.stringify(result)).not.toContain("TASK-1");

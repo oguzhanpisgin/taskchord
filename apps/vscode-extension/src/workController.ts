@@ -8,6 +8,7 @@ import type {
 } from "@taskchord/contracts";
 import { nodeProcessProbe } from "@taskchord/doctor";
 import { confirmIssueWrite, createGitHubClient, type GitHubClient } from "@taskchord/github";
+import type { OptionalRunnerReport } from "@taskchord/runners";
 import {
   handoffFindings,
   newContractTemplate,
@@ -22,6 +23,7 @@ import * as vscode from "vscode";
 import { type DraftMetadata, DraftStore } from "./draftStore.js";
 import { PreviewDocumentProvider } from "./previewProvider.js";
 import { RepositorySelectionStore } from "./repositorySelection.js";
+import type { RunnerStateStore } from "./runnerState.js";
 import type { WorkTreeModel } from "./workModel.js";
 import { WorkTreeDataProvider } from "./workTree.js";
 import { canUseWork } from "./workTrust.js";
@@ -68,6 +70,7 @@ export class WorkController implements vscode.Disposable {
   readonly #drafts: DraftStore;
   readonly #previews: PreviewDocumentProvider;
   readonly #repositories: RepositorySelectionStore;
+  readonly #runners: RunnerStateStore | undefined;
   readonly #diagnostics = vscode.languages.createDiagnosticCollection("taskchord-intent-scaffold");
   readonly #goalStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   readonly #disposables: vscode.Disposable[] = [];
@@ -77,11 +80,13 @@ export class WorkController implements vscode.Disposable {
     github: GitHubClient = createGitHubClient(nodeProcessProbe),
     previews: PreviewDocumentProvider = new PreviewDocumentProvider(),
     repositories: RepositorySelectionStore = new RepositorySelectionStore(context),
+    runners?: RunnerStateStore,
   ) {
     this.#context = context;
     this.#github = github;
     this.#previews = previews;
     this.#repositories = repositories;
+    this.#runners = runners;
     this.#drafts = new DraftStore(context);
     this.#goalStatus.name = "TaskChord Active Goal";
     this.#goalStatus.command = "taskchord.work.copyCodexHandoff";
@@ -94,6 +99,9 @@ export class WorkController implements vscode.Disposable {
       vscode.window.onDidChangeActiveTextEditor((editor) => {
         void this.#setDraftContext(editor?.document);
       }),
+      ...(this.#runners === undefined
+        ? []
+        : [this.#runners.onDidChange((report) => this.#projectRunnerState(report))]),
     );
     this.#updateGoalProjection();
     void this.#setDraftContext(vscode.window.activeTextEditor?.document);
@@ -164,6 +172,7 @@ export class WorkController implements vscode.Disposable {
       items,
       truncated: result.value.truncated,
       ...(activeGoal?.repository === repository.nameWithOwner ? { activeGoal } : {}),
+      ...(this.#runners?.report === undefined ? {} : { runners: this.#runners.report }),
     });
     await vscode.commands.executeCommand(
       "setContext",
@@ -414,6 +423,7 @@ export class WorkController implements vscode.Disposable {
         repository: this.provider.state.repository,
         items: this.provider.state.items,
         truncated: this.provider.state.truncated,
+        ...(this.#runners?.report === undefined ? {} : { runners: this.#runners.report }),
       });
     }
   }
@@ -578,6 +588,11 @@ export class WorkController implements vscode.Disposable {
     this.provider.update({ kind: "error", message, nextAction });
     void vscode.commands.executeCommand("setContext", "taskchord.workState", "error");
     void vscode.window.showErrorMessage(`${message} ${nextAction}`);
+  }
+
+  #projectRunnerState(report: OptionalRunnerReport): void {
+    if (this.provider.state.kind !== "ready") return;
+    this.provider.update({ ...this.provider.state, runners: report });
   }
 
   #updateDiagnostics(document: vscode.TextDocument): void {

@@ -282,9 +282,19 @@
           "group": "navigation@3"
         },
         {
+          "command": "taskchord.runners.refresh",
+          "when": "view == taskchord.work && isWorkspaceTrusted",
+          "group": "navigation@4"
+        },
+        {
+          "command": "taskchord.runners.openSettings",
+          "when": "view == taskchord.work && isWorkspaceTrusted",
+          "group": "navigation@5"
+        },
+        {
           "command": "taskchord.work.clearActiveGoal",
           "when": "view == taskchord.work && isWorkspaceTrusted && taskchord.hasActiveGoal",
-          "group": "navigation@4"
+          "group": "navigation@6"
         },
         {
           "command": "taskchord.proof.refresh",
@@ -347,6 +357,11 @@
           "command": "taskchord.work.copyCodexHandoff",
           "when": "view == taskchord.work && viewItem == taskchord.contractIssue && isWorkspaceTrusted && taskchord.hasActiveGoal",
           "group": "taskchord@2"
+        },
+        {
+          "command": "taskchord.runners.refresh",
+          "when": "view == taskchord.work && viewItem == taskchord.runnerStatus && isWorkspaceTrusted",
+          "group": "inline@1"
         },
         {
           "command": "taskchord.proof.openDetails",

@@ -9,7 +9,7 @@
 **Depo:** Kişisel GitHub hesabında, herkese açık `taskchord` deposu  
 **Lisans:** Apache-2.0
 **Tarih:** 30 Ağustos 2026  
-**Plan durumu:** Slice 001–004 tamamlandı; sıradaki aday Slice 005
+**Plan durumu:** Slice 001–005 tamamlandı; sonraki aday başlatılmadı
 
 ## 1. Ürün kararı
 
@@ -276,13 +276,13 @@ Ek güvenlik kuralları:
 
 ### Symphony
 
-Symphony MVP önkoşulu değildir. Eklendiğinde TaskChord scheduler veya orkestratör olmaz; yalnız desteklenen sürümü ve sağlık/state bilgisini okur, kullanıcı onaylı dispatch metadata'sını GitHub'a yazar ve blocked durumunu görünür kılar.
+Symphony MVP önkoşulu değildir. TaskChord scheduler veya orkestratör olmaz; yalnız kullanıcı tetiklemeli, salt-okunur health/state bilgisini desteklenen preview shape ile okur ve blocked durumunu görünür kılar. State özeti instance-wide olarak etiketlenir; başka repository'lere ait Issue kimlikleri Work görünümünde listelenmez.
 
 Symphony bulunmadığında Issue Contract, native Codex handoff ve Proof çalışmaya devam eder.
 
 ### Codex App Server
 
-Resmî [Codex App Server](https://learn.chatgpt.com/docs/app-server), authentication, conversation history, approvals ve streamed agent events gerektiren zengin istemciler için doğru derin entegrasyon yüzeyidir. TaskChord bunu ilk MVP yolu yapmaz.
+Resmî [Codex App Server](https://learn.chatgpt.com/docs/app-server), authentication, conversation history, approvals ve streamed agent events gerektiren zengin istemciler için doğru derin entegrasyon yüzeyidir. TaskChord bunu ilk MVP yolu yapmaz. Slice 005 yalnız `codex app-server --help` capability tespiti yapar; App Server başlatmaz veya bağlanmaz.
 
 Gerçek ihtiyaç kanıtlanırsa entegrasyon:
 
@@ -343,11 +343,13 @@ MVP'de çoklu tracker, module registry, bulut servisi veya ayrı web dashboard y
 - Teknik eksikler varken de verilebilen fakat kanıt değişince `stale` olan açık yerel Human decision.
 - Native Proof view ve açılabilir ayrıntı belgesi; GitHub review yalnız provenance olarak kalır.
 
-### Slice 005 — Optional runners
+### Slice 005 — Optional runners — tamamlandı
 
-- Symphony salt-okunur health/state adaptörü.
-- Gerçek ihtiyaç kanıtlanırsa sürüm ve capability kontrollü Codex App Server istemcisi.
-- Runner yokken native Codex handoff'a güvenli düşüş.
+- Symphony için kullanıcı tetiklemeli, salt-okunur local state özeti; polling, kurulum veya servis yaşam döngüsü yok.
+- Setup ve Work'te instance-wide running/blocked/retrying ve repository association sayımları; native handoff bütün runner durumlarında kullanılabilir.
+- `codex app-server --help` ile yalnız capability tespiti; connection veya execution yok.
+
+App Server istemcisi, Symphony dispatch metadata GitHub yazması ve runner execution gerçek ihtiyaç ile ayrı kabul ölçütü kanıtlanana kadar ertelenmiştir.
 
 Her dilim ayrı kabul ölçütü ve açık sahip onayıyla başlar. Bir dilimin tamamlanması sonrakine otomatik uygulama izni vermez.
 

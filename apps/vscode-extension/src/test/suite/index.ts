@@ -176,6 +176,25 @@ export async function run(): Promise<void> {
     visibleRunnerMenus.every((entry) => entry.when?.includes("isWorkspaceTrusted")),
     "Every visible optional-runner menu entry must be hidden in untrusted workspaces.",
   );
+  const workTitleMenus = menuGroups?.["view/title"] ?? [];
+  for (const command of ["taskchord.runners.refresh", "taskchord.runners.openSettings"]) {
+    assert.ok(
+      workTitleMenus.some(
+        (entry) =>
+          entry.command === command &&
+          entry.when === "view == taskchord.work && isWorkspaceTrusted",
+      ),
+      `${command} must be available from the trusted native Work view.`,
+    );
+  }
+  const handoffMenu = (menuGroups?.["view/item/context"] ?? []).find(
+    (entry) => entry.command === "taskchord.work.copyCodexHandoff",
+  );
+  assert.ok(handoffMenu?.when?.includes("taskchord.hasActiveGoal"));
+  assert.ok(
+    !handoffMenu?.when?.includes("runner"),
+    "Codex handoff visibility must not depend on optional-runner state.",
+  );
 
   const commands = await vscode.commands.getCommands(true);
   assert.ok(commands.includes("taskchord.runDoctor"), "Run Doctor command must be registered.");
