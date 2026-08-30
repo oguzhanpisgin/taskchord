@@ -9,8 +9,8 @@
     "pnpm": "11.19.0"
   },
   "scripts": {
-    "build": "pnpm --filter @taskchord/contracts build && pnpm --filter @taskchord/doctor build && pnpm --filter @taskchord/github build && pnpm --filter @taskchord/work build && pnpm --filter @taskchord/doctor-cli build && pnpm --filter taskchord build",
-    "typecheck": "pnpm --filter @taskchord/contracts build && pnpm --filter @taskchord/doctor build && pnpm --filter @taskchord/github build && pnpm --filter @taskchord/work build && pnpm -r --if-present typecheck",
+    "build": "pnpm --filter @taskchord/contracts build && pnpm --filter @taskchord/doctor build && pnpm --filter @taskchord/github build && pnpm --filter @taskchord/work build && pnpm --filter @taskchord/proof build && pnpm --filter @taskchord/doctor-cli build && pnpm --filter taskchord build",
+    "typecheck": "pnpm --filter @taskchord/contracts build && pnpm --filter @taskchord/doctor build && pnpm --filter @taskchord/github build && pnpm --filter @taskchord/work build && pnpm --filter @taskchord/proof build && pnpm -r --if-present typecheck",
     "check": "biome check .",
     "test:unit": "vitest run",
     "test:extension": "pnpm --filter taskchord test:integration",

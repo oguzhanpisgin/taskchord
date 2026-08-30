@@ -146,6 +146,72 @@ describe("GitHubClient read operations", () => {
   });
 });
 
+describe("GitHubClient Proof operations", () => {
+  it("reads the default branch and PR/CI through explicit repository argv", async () => {
+    const requests: ProbeRequest[] = [];
+    const client = createGitHubClient(
+      fake((request) => {
+        requests.push(request);
+        if (request.args[1] === "view") {
+          return completed(JSON.stringify({ defaultBranchRef: { name: "main" } }));
+        }
+        return completed(
+          JSON.stringify([
+            {
+              number: 9,
+              title: "Proof",
+              url: "https://github.com/owner/repo/pull/9",
+              state: "OPEN",
+              isDraft: false,
+              headRefName: "feature",
+              headRefOid: "0123456789abcdef0123456789abcdef01234567",
+              baseRefName: "main",
+              reviewDecision: "",
+              updatedAt: "2026-08-30T12:00:00Z",
+              statusCheckRollup: [
+                { name: "build", conclusion: "SUCCESS" },
+                { name: "tests", status: "IN_PROGRESS" },
+                { name: "optional", conclusion: "SKIPPED" },
+                { name: "advisory", conclusion: "NEUTRAL" },
+              ],
+            },
+          ]),
+        );
+      }),
+    );
+    await expect(client.getDefaultBranch(repository)).resolves.toEqual({ ok: true, value: "main" });
+    const pullRequest = await client.findPullRequest(repository, "feature");
+    expect(pullRequest).toMatchObject({
+      ok: true,
+      value: {
+        checks: [
+          { status: "passed" },
+          { status: "pending" },
+          { status: "unverified" },
+          { status: "unverified" },
+        ],
+      },
+    });
+    expect(requests[0]?.args).toEqual([
+      "repo",
+      "view",
+      "-R",
+      "owner/repo",
+      "--json",
+      "defaultBranchRef",
+    ]);
+    expect(requests[1]?.args.slice(0, 5)).toEqual(["pr", "list", "-R", "owner/repo", "--head"]);
+  });
+
+  it("rejects malformed PR shapes rather than producing green evidence", async () => {
+    const client = createGitHubClient(fake(() => completed('[{"number":1}]')));
+    await expect(client.findPullRequest(repository, "feature")).resolves.toMatchObject({
+      ok: false,
+      failure: { kind: "invalid-output" },
+    });
+  });
+});
+
 describe("GitHubClient approved writes", () => {
   it("uses fixed create argv and passes the exact body on stdin", async () => {
     const requests: ProbeRequest[] = [];

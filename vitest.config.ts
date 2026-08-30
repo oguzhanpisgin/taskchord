@@ -13,6 +13,7 @@ export default defineConfig({
       "@taskchord/github": fileURLToPath(
         new URL("./packages/github/src/index.ts", import.meta.url),
       ),
+      "@taskchord/proof": fileURLToPath(new URL("./packages/proof/src/index.ts", import.meta.url)),
       "@taskchord/work": fileURLToPath(new URL("./packages/work/src/index.ts", import.meta.url)),
     },
   },

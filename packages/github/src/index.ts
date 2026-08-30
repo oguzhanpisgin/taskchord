@@ -19,6 +19,25 @@ export interface IssueList {
   truncated: boolean;
 }
 
+export interface GitHubPullRequestCheck {
+  name: string;
+  status: "passed" | "failed" | "pending" | "unverified";
+}
+
+export interface GitHubPullRequest {
+  number: number;
+  title: string;
+  url: string;
+  state: "OPEN" | "MERGED" | "CLOSED";
+  isDraft: boolean;
+  headRefName: string;
+  headRefOid: string;
+  baseRefName: string;
+  reviewDecision: string;
+  updatedAt: string;
+  checks: readonly GitHubPullRequestCheck[];
+}
+
 export interface GitHubClient {
   resolveRepository(
     workspaceFolderUri: string,
@@ -32,6 +51,11 @@ export interface GitHubClient {
   ): Promise<GhResult<RemoteIssue | null>>;
   createIssue(write: ConfirmedIssueWrite): Promise<GhResult<IssueWriteOutcome>>;
   editIssue(write: ConfirmedIssueWrite): Promise<GhResult<IssueWriteOutcome>>;
+  getDefaultBranch(repository: RepositoryRef): Promise<GhResult<string>>;
+  findPullRequest(
+    repository: RepositoryRef,
+    branch: string,
+  ): Promise<GhResult<GitHubPullRequest | null>>;
 }
 
 export function confirmIssueWrite(snapshot: IssueWriteSnapshot): ConfirmedIssueWrite {
@@ -147,6 +171,79 @@ function parseIssue(value: unknown): RemoteIssue | undefined {
     url: value.url,
     updatedAt: value.updatedAt,
     authorLogin: value.author.login,
+  };
+}
+
+function parseCheck(value: unknown): GitHubPullRequestCheck | undefined {
+  if (!isRecord(value)) return undefined;
+  const name =
+    typeof value.name === "string"
+      ? value.name
+      : typeof value.context === "string"
+        ? value.context
+        : undefined;
+  if (name === undefined) return undefined;
+  const state =
+    typeof value.conclusion === "string"
+      ? value.conclusion.toUpperCase()
+      : typeof value.state === "string"
+        ? value.state.toUpperCase()
+        : typeof value.status === "string"
+          ? value.status.toUpperCase()
+          : "";
+  const failed = new Set([
+    "FAILURE",
+    "FAILED",
+    "ERROR",
+    "CANCELLED",
+    "TIMED_OUT",
+    "ACTION_REQUIRED",
+  ]);
+  const passed = new Set(["SUCCESS", "SUCCESSFUL"]);
+  const pending = new Set(["PENDING", "QUEUED", "IN_PROGRESS", "EXPECTED", "WAITING", "REQUESTED"]);
+  return {
+    name,
+    status: failed.has(state)
+      ? "failed"
+      : passed.has(state)
+        ? "passed"
+        : pending.has(state)
+          ? "pending"
+          : "unverified",
+  };
+}
+
+function parsePullRequest(value: unknown): GitHubPullRequest | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.number !== "number" ||
+    typeof value.title !== "string" ||
+    typeof value.url !== "string" ||
+    !["OPEN", "MERGED", "CLOSED"].includes(String(value.state)) ||
+    typeof value.isDraft !== "boolean" ||
+    typeof value.headRefName !== "string" ||
+    typeof value.headRefOid !== "string" ||
+    !/^[0-9a-f]{40}$/u.test(value.headRefOid) ||
+    typeof value.baseRefName !== "string" ||
+    typeof value.updatedAt !== "string" ||
+    !Array.isArray(value.statusCheckRollup)
+  ) {
+    return undefined;
+  }
+  const checks = value.statusCheckRollup.map(parseCheck);
+  if (checks.some((check) => check === undefined)) return undefined;
+  return {
+    number: value.number,
+    title: value.title,
+    url: value.url,
+    state: value.state as GitHubPullRequest["state"],
+    isDraft: value.isDraft,
+    headRefName: value.headRefName,
+    headRefOid: value.headRefOid,
+    baseRefName: value.baseRefName,
+    reviewDecision: typeof value.reviewDecision === "string" ? value.reviewDecision : "",
+    updatedAt: value.updatedAt,
+    checks: checks as GitHubPullRequestCheck[],
   };
 }
 
@@ -517,6 +614,99 @@ export function createGitHubClient(probe: ProcessProbe): GitHubClient {
         "Unknown result: the intended edit could not be verified by reading the Issue again.",
         "Refresh the Issue on GitHub before making another edit attempt.",
       );
+    },
+
+    async getDefaultBranch(repository) {
+      const result = await run(probe, {
+        command: "gh",
+        args: ["repo", "view", "-R", repository.nameWithOwner, "--json", "defaultBranchRef"],
+        cwd: repository.workspacePath,
+        timeoutMs: 10_000,
+        maxBufferBytes: 1_048_576,
+      });
+      if (result.outcome !== "completed" || result.exitCode !== 0) {
+        return processFailure(result, "Default branch reading");
+      }
+      try {
+        const parsed: unknown = JSON.parse(result.stdout);
+        if (
+          !isRecord(parsed) ||
+          !isRecord(parsed.defaultBranchRef) ||
+          typeof parsed.defaultBranchRef.name !== "string" ||
+          parsed.defaultBranchRef.name.length === 0
+        ) {
+          return failure(
+            "invalid-output",
+            "GitHub CLI returned an unknown default-branch shape.",
+            "Retry.",
+          );
+        }
+        return { ok: true, value: parsed.defaultBranchRef.name };
+      } catch {
+        return failure(
+          "invalid-output",
+          "GitHub CLI returned invalid default-branch data.",
+          "Retry.",
+        );
+      }
+    },
+
+    async findPullRequest(repository, branch) {
+      const result = await run(probe, {
+        command: "gh",
+        args: [
+          "pr",
+          "list",
+          "-R",
+          repository.nameWithOwner,
+          "--head",
+          branch,
+          "--state",
+          "all",
+          "--limit",
+          "10",
+          "--json",
+          "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,reviewDecision,updatedAt,statusCheckRollup",
+        ],
+        cwd: repository.workspacePath,
+        timeoutMs: 15_000,
+        maxBufferBytes: 4_194_304,
+      });
+      if (result.outcome !== "completed" || result.exitCode !== 0) {
+        return processFailure(result, "Pull request reading");
+      }
+      try {
+        const parsed: unknown = JSON.parse(result.stdout);
+        if (!Array.isArray(parsed)) {
+          return failure(
+            "invalid-output",
+            "GitHub CLI returned an unknown pull-request list shape.",
+            "Retry.",
+          );
+        }
+        const pullRequests = parsed.map(parsePullRequest);
+        if (pullRequests.some((pullRequest) => pullRequest === undefined)) {
+          return failure("invalid-output", "A pull request had an unknown shape.", "Retry.");
+        }
+        const matches = (pullRequests as GitHubPullRequest[]).filter(
+          (pullRequest) => pullRequest.headRefName === branch,
+        );
+        matches.sort((left, right) => {
+          const stateRank = (state: GitHubPullRequest["state"]): number =>
+            state === "OPEN" ? 0 : state === "MERGED" ? 1 : 2;
+          return (
+            stateRank(left.state) - stateRank(right.state) ||
+            right.updatedAt.localeCompare(left.updatedAt)
+          );
+        });
+        return { ok: true, value: matches[0] ?? null };
+      } catch {
+        return failure(
+          "invalid-output",
+          "GitHub CLI returned invalid pull-request data.",
+          "Retry.",
+        );
+      }
     },
   };
 }
