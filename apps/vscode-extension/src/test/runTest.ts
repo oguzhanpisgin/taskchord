@@ -7,6 +7,7 @@ import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const extensionDevelopmentPath = path.resolve(currentDirectory, "../..");
+const repositoryRoot = path.resolve(extensionDevelopmentPath, "../..");
 const extensionTestsPath = path.resolve(extensionDevelopmentPath, "dist/test/suite/index.cjs");
 
 async function runUntrustedTests(testDataRoot: string): Promise<void> {
@@ -51,7 +52,7 @@ try {
     extensionTestsPath,
     extensionTestsEnv: { TASKCHORD_SMOKE_MODE: "trusted" },
     launchArgs: [
-      extensionDevelopmentPath,
+      repositoryRoot,
       "--disable-extensions",
       "--disable-workspace-trust",
       "--user-data-dir",

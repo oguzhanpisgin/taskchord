@@ -37,21 +37,33 @@ async function runUntrustedHandlerSmoke(): Promise<void> {
 }
 
 async function runOwnedVerificationTaskSmoke(folder: vscode.WorkspaceFolder): Promise<void> {
-  const body = "node scripts/build.mjs";
-  const script: VerificationScript = {
-    kind: "build",
-    name: "build",
-    body,
-    definitionHash: createHash("sha256")
-      .update("pnpm")
-      .update("\0")
-      .update("build")
-      .update("\0")
-      .update(body)
-      .digest("hex"),
-    manager: "pnpm",
-    runnerCommand: ["pnpm", "run", "build"],
-  };
+  const packageJson = JSON.parse(
+    new TextDecoder().decode(
+      await vscode.workspace.fs.readFile(vscode.Uri.joinPath(folder.uri, "package.json")),
+    ),
+  ) as { scripts?: Record<string, unknown> };
+  const definitions = [
+    { kind: "build" as const, name: "build" },
+    { kind: "tests" as const, name: "test:unit" },
+  ];
+  const scripts: VerificationScript[] = definitions.map(({ kind, name }) => {
+    const body = packageJson.scripts?.[name];
+    assert.equal(typeof body, "string", `Root package.json must define ${name}.`);
+    return {
+      kind,
+      name,
+      body,
+      definitionHash: createHash("sha256")
+        .update("pnpm")
+        .update("\0")
+        .update(name)
+        .update("\0")
+        .update(body)
+        .digest("hex"),
+      manager: "pnpm",
+      runnerCommand: ["pnpm", "run", name],
+    };
+  });
   const startedRunIds: string[] = [];
   const subscription = vscode.tasks.onDidStartTask((event) => {
     if (event.execution.task.definition.type === "taskchord-proof") {
@@ -59,23 +71,32 @@ async function runOwnedVerificationTaskSmoke(folder: vscode.WorkspaceFolder): Pr
     }
   });
   try {
-    const result = await new VscodeProofTaskRunner().run(folder, script);
-    assert.match(
-      result.runId,
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+    const runner = new VscodeProofTaskRunner();
+    const results = [];
+    for (const script of scripts) results.push(await runner.run(folder, script));
+    assert.equal(
+      new Set(results.map((result) => result.runId)).size,
+      2,
+      "Each verification task must receive a distinct runId.",
     );
     assert.deepEqual(
       startedRunIds,
-      [result.runId],
-      "The runner must track only the TaskChord task carrying its internal runId.",
+      results.map((result) => result.runId),
+      "The runner must observe exactly the TaskChord tasks carrying its internal runIds.",
     );
-    assert.ok(Number.isFinite(Date.parse(result.startedAt)), "Task start time must be captured.");
-    assert.ok(Number.isFinite(Date.parse(result.finishedAt)), "Task end time must be captured.");
-    assert.ok(
-      Date.parse(result.finishedAt) >= Date.parse(result.startedAt),
-      "Task finish time must not precede its start time.",
-    );
-    assert.equal(result.exitCode, 0, "The exact pnpm run build verification task must pass.");
+    for (const result of results) {
+      assert.match(
+        result.runId,
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      );
+      assert.ok(Number.isFinite(Date.parse(result.startedAt)), "Task start time must be captured.");
+      assert.ok(Number.isFinite(Date.parse(result.finishedAt)), "Task end time must be captured.");
+      assert.ok(
+        Date.parse(result.finishedAt) >= Date.parse(result.startedAt),
+        "Task finish time must not precede its start time.",
+      );
+      assert.equal(result.exitCode, 0, "The exact root verification task must pass.");
+    }
   } finally {
     subscription.dispose();
   }
