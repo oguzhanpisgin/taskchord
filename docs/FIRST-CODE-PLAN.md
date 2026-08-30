@@ -1,5 +1,7 @@
 # TaskChord — İlk Kod Öncesi Uygulama ve Onay Planı
 
+> **Tarihsel kayıt:** Bu belge Slice 001 için onaylanan ve uygulanan ilk kod planını değiştirmeden korur. Slice 001, `3e1a2c7` (`feat: add Workbench shell and read-only doctor`) commitinde tamamlandı. Sonraki ürün yönü ve dilim sırası için güncel otorite [`PRODUCT-PLAN.md`](PRODUCT-PLAN.md) belgesidir.
+
 **Durum:** 30 Ağustos 2026 tarihinde sahip tarafından onaylandı  
 **Kapsam:** Bu belge ilk ürün kodu yazılmadan önceki teknik kararları ve ilk kod dilimini dondurur.  
 **Kural:** Onay yalnız aşağıdaki ilk kod dilimi için geçerlidir; sonraki dilimlere otomatik izin vermez.
