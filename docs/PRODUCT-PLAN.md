@@ -9,7 +9,7 @@
 **Depo:** Kişisel GitHub hesabında, herkese açık `taskchord` deposu  
 **Lisans:** Apache-2.0
 **Tarih:** 30 Ağustos 2026  
-**Plan durumu:** Slice 001 tamamlandı; sonraki dilimler için onaylanmış ürün yönü
+**Plan durumu:** Slice 001–004 tamamlandı; sıradaki aday Slice 005
 
 ## 1. Ürün kararı
 
@@ -333,11 +333,15 @@ MVP'de çoklu tracker, module registry, bulut servisi veya ayrı web dashboard y
 - Belirsiz create uzlaştırması ve edit conflict/readback koruması.
 - Canlı GitHub create/edit kabul kanıtı tamamlandı. `oguzhanpisgin/taskchord` deposunda Issue #5 için onaylanmış yük (`create` ve `edit`) birebir readback ile doğrulandı, ardından issue `completed` gerekçesiyle kapatıldı; yorum, label veya metadata eklenmedi ve depo çalışma ağacı temiz kaldı.
 
-### Slice 004 — Deterministic Proof
+### Slice 004 — Deterministic Proof — tamamlandı
 
 - Changed files, Build, Tests, Commit, PR/CI ve Human decision şeritleri.
-- Eksik kanıtı gizlemeyen review-readiness hesabı.
-- Native Proof view ve açılabilir ayrıntı belgesi.
+- Eksik, failed, unverified veya stale kanıtı gizlemeyen review-readiness hesabı.
+- Seçili workspace kökündeki `build`/`build:*` ve `test`/`test:*` package script'leri için değişmez Markdown önizleme ve ayrı modal onay.
+- VS Code Tasks üzerinden yalnız TaskChord'un oluşturduğu, run-id ile izlenen doğrulama görevleri; serbest komut veya Issue metni çalıştırılmaz.
+- Başlangıç/bitiş workspace fingerprint'i, script-definition hash'i ve exit sonucuna bağlı kalıcı Build/Test kanıtı.
+- Teknik eksikler varken de verilebilen fakat kanıt değişince `stale` olan açık yerel Human decision.
+- Native Proof view ve açılabilir ayrıntı belgesi; GitHub review yalnız provenance olarak kalır.
 
 ### Slice 005 — Optional runners
 

@@ -46,6 +46,8 @@ export interface ProofStrip {
 
 export interface HumanDecisionRecord {
   decision: HumanDecision;
+  decidedAt?: string;
+  evidenceFingerprint?: string;
 }
 
 export interface ProofReport {
@@ -53,10 +55,46 @@ export interface ProofReport {
   generatedAt: string;
   subject: ProofSubject;
   fingerprint: string;
+  technicalFingerprint: string;
   strips: Readonly<Record<ProofStripId, ProofStrip>>;
   technicalReadiness: TechnicalReadiness;
   humanDecision: HumanDecisionRecord;
   unresolvedTechnicalStrips: readonly ProofStripId[];
+}
+
+export type VerificationKind = "build" | "tests";
+export type SupportedPackageManager = "pnpm" | "npm" | "yarn";
+
+export interface VerificationScript {
+  kind: VerificationKind;
+  name: string;
+  body: string;
+  definitionHash: string;
+  manager: SupportedPackageManager;
+  runnerCommand: readonly string[];
+}
+
+export type VerificationScriptDiscovery =
+  | { ok: true; manager: SupportedPackageManager; scripts: readonly VerificationScript[] }
+  | { ok: false; reason: string };
+
+export interface VerificationRunRecord {
+  kind: VerificationKind;
+  scriptName: string;
+  definitionHash: string;
+  runnerCommand: readonly string[];
+  startedAt: string;
+  finishedAt: string;
+  exitCode: number | null;
+  startFingerprint: string;
+  endFingerprint: string;
+}
+
+export interface ProofEvidenceInput {
+  scripts: readonly VerificationScript[];
+  build?: VerificationRunRecord;
+  tests?: VerificationRunRecord;
+  humanDecision?: HumanDecisionRecord;
 }
 
 export interface ChangedFile {
@@ -114,6 +152,28 @@ const LABELS: Record<ProofStripId, string> = {
 };
 
 const TECHNICAL_STRIPS = ["changed-files", "build", "tests", "commit", "pr-ci"] as const;
+
+function fingerprintTechnicalEvidence(
+  workspaceFingerprint: string,
+  subject: ProofSubject,
+  strips: Readonly<Record<ProofStripId, ProofStrip>>,
+): string {
+  const technical = TECHNICAL_STRIPS.map((id) => {
+    const evidence = strips[id];
+    return [id, evidence.status, evidence.summary, ...evidence.details];
+  });
+  return createHash("sha256")
+    .update(workspaceFingerprint)
+    .update("\0")
+    .update(subject.repository)
+    .update("\0")
+    .update(subject.branch)
+    .update("\0")
+    .update(subject.headSha)
+    .update("\0")
+    .update(JSON.stringify(technical))
+    .digest("hex");
+}
 
 function strip(
   id: ProofStripId,
@@ -243,11 +303,13 @@ export function createPassiveProofReport(
     ),
   };
   const unresolvedTechnicalStrips = TECHNICAL_STRIPS.filter((id) => strips[id].status !== "passed");
+  const technicalFingerprint = fingerprintTechnicalEvidence(git.fingerprint, git.subject, strips);
   return {
     schemaVersion: PROOF_SCHEMA_VERSION,
     generatedAt: git.observedAt,
     subject: git.subject,
     fingerprint: git.fingerprint,
+    technicalFingerprint,
     strips,
     technicalReadiness:
       unresolvedTechnicalStrips.length === 0 ? "ready-for-human-review" : "not-ready",
@@ -274,11 +336,13 @@ export function createUnavailableProofReport(
     "pr-ci": strip("pr-ci", "unverified", "PR / CI evidence is unavailable.", observedAt),
     "human-decision": strip("human-decision", "pending", "Human decision is pending.", observedAt),
   };
+  const technicalFingerprint = fingerprintTechnicalEvidence(fingerprint, subject, strips);
   return {
     schemaVersion: PROOF_SCHEMA_VERSION,
     generatedAt: observedAt,
     subject,
     fingerprint,
+    technicalFingerprint,
     strips,
     technicalReadiness: "not-ready",
     humanDecision: { decision: "pending" },
@@ -562,6 +626,281 @@ export async function compareCommitRelation(
   return "diverged";
 }
 
+function packageManagerFromDeclaration(value: unknown): SupportedPackageManager | undefined {
+  if (typeof value !== "string") return undefined;
+  const match = /^(pnpm|npm|yarn)(?:@|$)/u.exec(value.trim());
+  return match?.[1] as SupportedPackageManager | undefined;
+}
+
+function packageManagerFromLockfiles(
+  lockfiles: readonly string[],
+): SupportedPackageManager | undefined {
+  const managers = new Set<SupportedPackageManager>();
+  for (const lockfile of lockfiles) {
+    if (lockfile === "pnpm-lock.yaml") managers.add("pnpm");
+    if (lockfile === "package-lock.json" || lockfile === "npm-shrinkwrap.json") managers.add("npm");
+    if (lockfile === "yarn.lock") managers.add("yarn");
+  }
+  return managers.size === 1 ? [...managers][0] : undefined;
+}
+
+export function discoverVerificationScripts(
+  packageJsonText: string,
+  presentLockfiles: readonly string[],
+): VerificationScriptDiscovery {
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(packageJsonText);
+  } catch {
+    return { ok: false, reason: "package.json is not valid JSON." };
+  }
+  if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) {
+    return { ok: false, reason: "package.json must contain an object." };
+  }
+  const record = manifest as Record<string, unknown>;
+  const declared = record.packageManager;
+  const manager =
+    declared === undefined
+      ? packageManagerFromLockfiles(presentLockfiles)
+      : packageManagerFromDeclaration(declared);
+  if (manager === undefined) {
+    return {
+      ok: false,
+      reason:
+        declared === undefined
+          ? "A single pnpm, npm, or yarn lockfile is required."
+          : "packageManager must declare pnpm, npm, or yarn.",
+    };
+  }
+  const rawScripts = record.scripts;
+  if (typeof rawScripts !== "object" || rawScripts === null || Array.isArray(rawScripts)) {
+    return { ok: true, manager, scripts: [] };
+  }
+  const scripts: VerificationScript[] = [];
+  for (const [name, body] of Object.entries(rawScripts as Record<string, unknown>).sort(
+    ([a], [b]) => a.localeCompare(b),
+  )) {
+    if (typeof body !== "string") continue;
+    const kind: VerificationKind | undefined =
+      name === "build" || name.startsWith("build:")
+        ? "build"
+        : name === "test" || name.startsWith("test:")
+          ? "tests"
+          : undefined;
+    if (kind === undefined) continue;
+    const definitionHash = createHash("sha256")
+      .update(manager)
+      .update("\0")
+      .update(name)
+      .update("\0")
+      .update(body)
+      .digest("hex");
+    scripts.push({
+      kind,
+      name,
+      body,
+      definitionHash,
+      manager,
+      runnerCommand: [manager, "run", name],
+    });
+  }
+  return { ok: true, manager, scripts };
+}
+
+function renderArg(value: string): string {
+  return /^[A-Za-z0-9._:@/+\-=]+$/u.test(value) ? value : `'${value.replaceAll("'", "''")}'`;
+}
+
+export function renderRunnerCommand(command: readonly string[]): string {
+  return command.map(renderArg).join(" ");
+}
+
+export function renderVerificationPreview(input: {
+  packageJsonPath: string;
+  cwd: string;
+  script: VerificationScript;
+}): string {
+  return `${[
+    "# TaskChord Proof Verification Preview",
+    "",
+    `**Kind:** ${input.script.kind}`,
+    `**package.json:** ${input.packageJsonPath}`,
+    `**Working directory:** ${input.cwd}`,
+    `**Package manager:** ${input.script.manager}`,
+    `**Script name:** ${input.script.name}`,
+    `**Script body:** \`${input.script.body.replaceAll("`", "\\`")}\``,
+    `**Command:** \`${renderRunnerCommand(input.script.runnerCommand)}\``,
+    "",
+    "TaskChord will run only this package script after separate confirmation.",
+    "",
+  ].join("\n")}\n`;
+}
+
+function verificationStrip(
+  kind: VerificationKind,
+  report: ProofReport,
+  run: VerificationRunRecord | undefined,
+  scripts: readonly VerificationScript[],
+): ProofStrip {
+  const observedAt = run?.finishedAt ?? report.generatedAt;
+  if (run === undefined) {
+    return strip(
+      kind,
+      "missing",
+      `${kind === "build" ? "Build has" : "Tests have"} not been run by TaskChord.`,
+      observedAt,
+    );
+  }
+  const current = scripts.find((script) => script.kind === kind && script.name === run.scriptName);
+  const details = [
+    `Script: ${run.scriptName}`,
+    `Runner: ${renderRunnerCommand(run.runnerCommand)}`,
+    `Started: ${run.startedAt}`,
+    `Finished: ${run.finishedAt}`,
+    `Exit code: ${run.exitCode ?? "not reported"}`,
+  ];
+  if (current === undefined || current.definitionHash !== run.definitionHash) {
+    return strip(
+      kind,
+      "stale",
+      "The package script definition changed or was removed.",
+      observedAt,
+      details,
+    );
+  }
+  if (report.fingerprint !== run.endFingerprint) {
+    return strip(
+      kind,
+      "stale",
+      "The workspace changed after this verification run.",
+      observedAt,
+      details,
+    );
+  }
+  if (run.startFingerprint !== run.endFingerprint) {
+    return strip(
+      kind,
+      "unverified",
+      "The workspace changed while this verification ran.",
+      observedAt,
+      details,
+    );
+  }
+  if (run.exitCode === null) {
+    return strip(
+      kind,
+      "unverified",
+      "The verification task did not report an exit code.",
+      observedAt,
+      details,
+    );
+  }
+  if (run.exitCode !== 0) {
+    return strip(
+      kind,
+      "failed",
+      `The verification task exited with code ${run.exitCode}.`,
+      observedAt,
+      details,
+    );
+  }
+  return strip(
+    kind,
+    "passed",
+    `TaskChord ran ${run.scriptName} successfully.`,
+    observedAt,
+    details,
+  );
+}
+
+function humanDecisionStrip(
+  decision: HumanDecisionRecord | undefined,
+  technicalFingerprint: string,
+  observedAt: string,
+): { record: HumanDecisionRecord; evidence: ProofStrip } {
+  if (
+    decision === undefined ||
+    decision.decision === "pending" ||
+    decision.evidenceFingerprint === undefined
+  ) {
+    return {
+      record: { decision: "pending" },
+      evidence: strip("human-decision", "pending", "Human decision is pending.", observedAt),
+    };
+  }
+  if (decision.evidenceFingerprint !== technicalFingerprint || decision.decision === "stale") {
+    return {
+      record: { ...decision, decision: "stale" },
+      evidence: strip(
+        "human-decision",
+        "stale",
+        "The previous human decision no longer matches the current proof.",
+        decision.decidedAt ?? observedAt,
+      ),
+    };
+  }
+  if (decision.decision === "changes-requested") {
+    return {
+      record: decision,
+      evidence: strip(
+        "human-decision",
+        "failed",
+        "A human requested changes for this proof.",
+        decision.decidedAt ?? observedAt,
+      ),
+    };
+  }
+  return {
+    record: decision,
+    evidence: strip(
+      "human-decision",
+      "passed",
+      "A human accepted this proof.",
+      decision.decidedAt ?? observedAt,
+    ),
+  };
+}
+
+export function applyProofEvidence(passive: ProofReport, input: ProofEvidenceInput): ProofReport {
+  const technicalStrips: Readonly<Record<ProofStripId, ProofStrip>> = {
+    ...passive.strips,
+    build: verificationStrip("build", passive, input.build, input.scripts),
+    tests: verificationStrip("tests", passive, input.tests, input.scripts),
+  };
+  const technicalFingerprint = fingerprintTechnicalEvidence(
+    passive.fingerprint,
+    passive.subject,
+    technicalStrips,
+  );
+  const human = humanDecisionStrip(input.humanDecision, technicalFingerprint, passive.generatedAt);
+  const strips: Readonly<Record<ProofStripId, ProofStrip>> = {
+    ...technicalStrips,
+    "human-decision": human.evidence,
+  };
+  const unresolvedTechnicalStrips = TECHNICAL_STRIPS.filter((id) => strips[id].status !== "passed");
+  return {
+    ...passive,
+    strips,
+    technicalFingerprint,
+    technicalReadiness:
+      unresolvedTechnicalStrips.length === 0 ? "ready-for-human-review" : "not-ready",
+    humanDecision: human.record,
+    unresolvedTechnicalStrips,
+  };
+}
+
+export function createHumanDecision(
+  decision: "accepted" | "changes-requested",
+  technicalFingerprint: string,
+  now = new Date(),
+): HumanDecisionRecord {
+  return {
+    decision,
+    decidedAt: now.toISOString(),
+    evidenceFingerprint: technicalFingerprint,
+  };
+}
+
 export function renderProofMarkdown(report: ProofReport): string {
   const lines = [
     "# TaskChord Proof",
@@ -572,6 +911,7 @@ export function renderProofMarkdown(report: ProofReport): string {
     `**Base:** ${report.subject.baseBranch ?? "unverified"}`,
     `**Technical readiness:** ${report.technicalReadiness}`,
     `**Human decision:** ${report.humanDecision.decision}`,
+    `**Technical fingerprint:** ${report.technicalFingerprint}`,
     `**Observed:** ${report.generatedAt}`,
     "",
   ];

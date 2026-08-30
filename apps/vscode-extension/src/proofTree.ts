@@ -22,10 +22,15 @@ export class ProofTreeDataProvider implements vscode.TreeDataProvider<ProofTreeM
     if (model.kind === "strip") {
       item.tooltip = `${model.evidence.label}\n${model.evidence.summary}\nObserved: ${model.evidence.observedAt}`;
       item.contextValue = "taskchord.proofStrip";
-      item.command = {
-        command: "taskchord.proof.openDetails",
-        title: "Open Proof Details",
-      };
+      item.command =
+        model.evidence.id === "build"
+          ? { command: "taskchord.proof.runBuild", title: "Run Proof Build" }
+          : model.evidence.id === "tests"
+            ? { command: "taskchord.proof.runTests", title: "Run Proof Tests" }
+            : {
+                command: "taskchord.proof.openDetails",
+                title: "Open Proof Details",
+              };
     }
     return item;
   }

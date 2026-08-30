@@ -1,6 +1,85 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { DOCTOR_SCHEMA_VERSION, type DoctorReport } from "@taskchord/contracts";
+import type { VerificationScript } from "@taskchord/proof";
 import * as vscode from "vscode";
+import { VscodeProofTaskRunner } from "../../proofTaskRunner.js";
+
+async function runUntrustedHandlerSmoke(): Promise<void> {
+  assert.equal(
+    vscode.workspace.isTrusted,
+    false,
+    "The untrusted smoke host must open the workspace without trust.",
+  );
+  const startedTaskChordRuns: string[] = [];
+  const subscription = vscode.tasks.onDidStartTask((event) => {
+    if (event.execution.task.definition.type === "taskchord-proof") {
+      startedTaskChordRuns.push(String(event.execution.task.definition.runId));
+    }
+  });
+  try {
+    for (const command of [
+      "taskchord.proof.runBuild",
+      "taskchord.proof.runTests",
+      "taskchord.proof.accept",
+    ]) {
+      await vscode.commands.executeCommand(command);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    assert.deepEqual(
+      startedTaskChordRuns,
+      [],
+      "Proof handlers must not start a TaskChord task in an untrusted workspace.",
+    );
+  } finally {
+    subscription.dispose();
+  }
+}
+
+async function runOwnedVerificationTaskSmoke(folder: vscode.WorkspaceFolder): Promise<void> {
+  const body = "node scripts/build.mjs";
+  const script: VerificationScript = {
+    kind: "build",
+    name: "build",
+    body,
+    definitionHash: createHash("sha256")
+      .update("pnpm")
+      .update("\0")
+      .update("build")
+      .update("\0")
+      .update(body)
+      .digest("hex"),
+    manager: "pnpm",
+    runnerCommand: ["pnpm", "run", "build"],
+  };
+  const startedRunIds: string[] = [];
+  const subscription = vscode.tasks.onDidStartTask((event) => {
+    if (event.execution.task.definition.type === "taskchord-proof") {
+      startedRunIds.push(String(event.execution.task.definition.runId));
+    }
+  });
+  try {
+    const result = await new VscodeProofTaskRunner().run(folder, script);
+    assert.match(
+      result.runId,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+    );
+    assert.deepEqual(
+      startedRunIds,
+      [result.runId],
+      "The runner must track only the TaskChord task carrying its internal runId.",
+    );
+    assert.ok(Number.isFinite(Date.parse(result.startedAt)), "Task start time must be captured.");
+    assert.ok(Number.isFinite(Date.parse(result.finishedAt)), "Task end time must be captured.");
+    assert.ok(
+      Date.parse(result.finishedAt) >= Date.parse(result.startedAt),
+      "Task finish time must not precede its start time.",
+    );
+    assert.equal(result.exitCode, 0, "The exact pnpm run build verification task must pass.");
+  } finally {
+    subscription.dispose();
+  }
+}
 
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("taskchord.taskchord");
@@ -8,6 +87,11 @@ export async function run(): Promise<void> {
 
   await extension.activate();
   assert.equal(extension.isActive, true, "TaskChord extension must activate.");
+
+  if (process.env.TASKCHORD_SMOKE_MODE === "untrusted") {
+    await runUntrustedHandlerSmoke();
+    return;
+  }
 
   const containers = extension.packageJSON.contributes?.viewsContainers?.activitybar as
     | Array<{ id: string; title: string }>
@@ -53,6 +137,13 @@ export async function run(): Promise<void> {
     visibleWorkMenus.every((entry) => entry.when?.includes("isWorkspaceTrusted")),
     "Every visible Work menu entry must be hidden in untrusted workspaces.",
   );
+  const visibleProofMenus = Object.values(menuGroups ?? {})
+    .flat()
+    .filter((entry) => entry.command.startsWith("taskchord.proof.") && entry.when !== "false");
+  assert.ok(
+    visibleProofMenus.every((entry) => entry.when?.includes("isWorkspaceTrusted")),
+    "Every visible Proof menu entry must be hidden in untrusted workspaces.",
+  );
 
   const commands = await vscode.commands.getCommands(true);
   assert.ok(commands.includes("taskchord.runDoctor"), "Run Doctor command must be registered.");
@@ -69,6 +160,11 @@ export async function run(): Promise<void> {
     "taskchord.proof.refresh",
     "taskchord.proof.selectRepository",
     "taskchord.proof.openDetails",
+    "taskchord.proof.runBuild",
+    "taskchord.proof.runTests",
+    "taskchord.proof.accept",
+    "taskchord.proof.requestChanges",
+    "taskchord.proof.clearDecision",
   ]) {
     assert.ok(commands.includes(command), `${command} must be registered.`);
   }
@@ -124,4 +220,5 @@ export async function run(): Promise<void> {
     diagnostics.some((diagnostic) => diagnostic.source === "TaskChord Intent Scaffold"),
     "Intent Scaffold must report missing contract fields in the native editor.",
   );
+  await runOwnedVerificationTaskSmoke(vscode.workspace.workspaceFolders[0]);
 }
