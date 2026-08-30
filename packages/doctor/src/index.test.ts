@@ -41,6 +41,15 @@ function readyProbe(): ProcessProbe {
       "git --version": completed("git version 2.55.0\n"),
       "node --version": completed("v24.19.0\n"),
       "gh auth status": completed("authenticated account\n"),
+      "codex --version": completed("codex-cli 0.149.1\n"),
+      "codex doctor --json": completed(
+        JSON.stringify({
+          schemaVersion: 1,
+          overallStatus: "ok",
+          codexVersion: "0.149.1",
+          checks: { runtime: { status: "ok", details: "must not cross the boundary" } },
+        }),
+      ),
       "git rev-parse --is-inside-work-tree": completed("true\n"),
       "git rev-parse --abbrev-ref HEAD": completed("main\n"),
       "git status --porcelain": completed(" M secret-plan.md\n"),
@@ -92,11 +101,12 @@ describe("runDoctor", () => {
       "git",
       "node",
       "github-cli-auth",
+      "codex-doctor",
       "repository",
     ]);
     expect(report.summary).toEqual({
       status: "ready",
-      ready: 5,
+      ready: 6,
       unverified: 0,
       failed: 0,
     });
@@ -107,6 +117,67 @@ describe("runDoctor", () => {
       branch: "main",
       dirtyFileCount: "1",
     });
+  });
+
+  it("keeps Windows and WSL measurements separate", async () => {
+    const hostProbe = probe((request) => {
+      if (request.command !== "wsl") {
+        return readyProbe().run(request);
+      }
+      if (request.args.join(" ") === "-l -q") {
+        return completed("Ubuntu-24.04\ndocker-desktop\n");
+      }
+      const joined = request.args.join(" ");
+      if (joined.endsWith("/usr/bin/uname -r")) {
+        return completed("6.6.87.2-microsoft-standard-WSL2\n");
+      }
+      if (joined.endsWith("/usr/bin/uname -m")) {
+        return completed("x86_64\n");
+      }
+      const separator = request.args.indexOf("--");
+      const command = request.args[separator + 3];
+      const args = request.args.slice(separator + 4);
+      return readyProbe().run({
+        command: command as ProbeRequest["command"],
+        args,
+        timeoutMs: request.timeoutMs,
+      });
+    });
+    const report = await runDoctor({
+      runtime: runtime(),
+      probe: hostProbe,
+      workspaceRoot: "C:\\Projects\\taskchord",
+    });
+    expect(report.targets.map((target) => target.id)).toEqual(["windows-host", "wsl:ubuntu-24.04"]);
+    expect(report.checks).toHaveLength(12);
+    expect(report.checks.filter((check) => check.targetId === "wsl:ubuntu-24.04")).toHaveLength(6);
+  });
+
+  it("accepts native Codex Doctor exit code 1 when its JSON is valid", async () => {
+    const nativeFailureProbe = probe((request) => {
+      if (request.command === "codex" && request.args.join(" ") === "doctor --json") {
+        return completed(
+          JSON.stringify({
+            schemaVersion: 1,
+            overallStatus: "fail",
+            checks: { auth: { status: "fail", details: "not forwarded" } },
+          }),
+          1,
+        );
+      }
+      return readyProbe().run(request);
+    });
+    const report = await runDoctor({
+      runtime: runtime({ platform: () => "darwin", release: () => "25.0.0" }),
+      probe: nativeFailureProbe,
+      workspaceRoot: "/repo",
+    });
+    const codexDoctor = report.checks.find((check) => check.id === "codex-doctor");
+    expect(codexDoctor).toMatchObject({
+      status: "failed",
+      evidence: { fail: "1", total: "1" },
+    });
+    expect(JSON.stringify(codexDoctor)).not.toContain("not forwarded");
   });
 
   it("returns unverified for an unknown platform", async () => {
@@ -191,7 +262,7 @@ describe("runDoctor", () => {
     }));
     const report = await runDoctor({ runtime: runtime(), probe: denied });
     expect(report.summary.status).toBe("unverified");
-    expect(report.checks.filter((check) => check.source === "process")).toSatisfy(
+    expect(report.checks.filter((check) => check.source !== "runtime")).toSatisfy(
       (checks: DoctorCheck[]) => checks.every((check) => check.status === "unverified"),
     );
   });

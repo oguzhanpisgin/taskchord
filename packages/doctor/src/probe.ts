@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import process from "node:process";
 
-export type ProbeCommand = "git" | "node" | "gh";
+export type ProbeCommand = "git" | "node" | "gh" | "codex" | "wsl";
 export type ProbeOutcome = "completed" | "not-found" | "timeout" | "denied" | "error";
 
 export interface ProbeRequest {
@@ -24,7 +24,7 @@ export interface ProcessProbe {
   run(request: ProbeRequest): Promise<ProbeResult>;
 }
 
-const ALLOWED_COMMANDS = new Set<ProbeCommand>(["git", "node", "gh"]);
+const ALLOWED_COMMANDS = new Set<ProbeCommand>(["git", "node", "gh", "codex", "wsl"]);
 const SENSITIVE_ENVIRONMENT_NAME = /TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH|KEY/iu;
 
 export function filteredEnvironment(
