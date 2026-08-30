@@ -331,7 +331,7 @@ MVP'de çoklu tracker, module registry, bulut servisi veya ayrı web dashboard y
 - Issue yazması ve Codex handoff için ayrı önizleme/onay.
 - Yerel Active Goal projection; GitHub'a ek metadata yazılmaz.
 - Belirsiz create uzlaştırması ve edit conflict/readback koruması.
-- Canlı GitHub create/edit kabul kanıtı, kesin payload için ayrı sahip onayı verilene kadar beklemededir.
+- Canlı GitHub create/edit kabul kanıtı tamamlandı. `oguzhanpisgin/taskchord` deposunda Issue #5 için onaylanmış yük (`create` ve `edit`) birebir readback ile doğrulandı, ardından issue `completed` gerekçesiyle kapatıldı; yorum, label veya metadata eklenmedi ve depo çalışma ağacı temiz kaldı.
 
 ### Slice 004 — Deterministic Proof
 
