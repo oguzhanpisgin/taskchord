@@ -1,4 +1,4 @@
-import type { RepositoryRef, WorkItem } from "@taskchord/contracts";
+import type { ActiveGoal, RepositoryRef, WorkItem } from "@taskchord/contracts";
 
 export type WorkState =
   | { kind: "idle" }
@@ -6,7 +6,13 @@ export type WorkState =
   | { kind: "untrusted" }
   | { kind: "select-repository" }
   | { kind: "error"; message: string; nextAction: string }
-  | { kind: "ready"; repository: RepositoryRef; items: WorkItem[]; truncated: boolean };
+  | {
+      kind: "ready";
+      repository: RepositoryRef;
+      items: WorkItem[];
+      truncated: boolean;
+      activeGoal?: ActiveGoal;
+    };
 
 export type WorkTreeModel =
   | { kind: "message"; label: string; description?: string; icon: string }
@@ -60,6 +66,14 @@ export function toWorkTreeModels(state: WorkState): WorkTreeModel[] {
           icon: item.parsedBody.kind === "contract" ? "checklist" : "issues",
         };
       });
+      if (state.activeGoal !== undefined) {
+        issues.unshift({
+          kind: "message",
+          label: `Active Goal · #${state.activeGoal.issueNumber} ${state.activeGoal.issueTitle}`,
+          description: state.activeGoal.goal,
+          icon: "target",
+        });
+      }
       if (issues.length === 0) {
         issues.push({ kind: "message", label: "No open Issues.", icon: "issues" });
       }

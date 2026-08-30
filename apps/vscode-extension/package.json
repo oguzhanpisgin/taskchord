@@ -78,7 +78,7 @@
       },
       {
         "command": "taskchord.work.previewAndSubmit",
-        "title": "Preview Issue Contract",
+        "title": "Preview and Submit Issue Contract",
         "category": "TaskChord",
         "icon": "$(preview)"
       },
@@ -87,6 +87,24 @@
         "title": "Open on GitHub",
         "category": "TaskChord",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "taskchord.work.setActiveGoal",
+        "title": "Set as Active Goal",
+        "category": "TaskChord",
+        "icon": "$(target)"
+      },
+      {
+        "command": "taskchord.work.clearActiveGoal",
+        "title": "Clear Active Goal",
+        "category": "TaskChord",
+        "icon": "$(close)"
+      },
+      {
+        "command": "taskchord.work.copyCodexHandoff",
+        "title": "Preview and Copy Codex Handoff",
+        "category": "TaskChord",
+        "icon": "$(copy)"
       }
     ],
     "viewsContainers": {
@@ -160,6 +178,11 @@
           "command": "taskchord.work.selectRepository",
           "when": "view == taskchord.work && isWorkspaceTrusted",
           "group": "navigation@3"
+        },
+        {
+          "command": "taskchord.work.clearActiveGoal",
+          "when": "view == taskchord.work && isWorkspaceTrusted && taskchord.hasActiveGoal",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -172,6 +195,16 @@
           "command": "taskchord.work.openOnGitHub",
           "when": "view == taskchord.work && (viewItem == taskchord.contractIssue || viewItem == taskchord.readOnlyIssue) && isWorkspaceTrusted",
           "group": "inline@2"
+        },
+        {
+          "command": "taskchord.work.setActiveGoal",
+          "when": "view == taskchord.work && viewItem == taskchord.contractIssue && isWorkspaceTrusted",
+          "group": "taskchord@1"
+        },
+        {
+          "command": "taskchord.work.copyCodexHandoff",
+          "when": "view == taskchord.work && viewItem == taskchord.contractIssue && isWorkspaceTrusted && taskchord.hasActiveGoal",
+          "group": "taskchord@2"
         }
       ],
       "editor/title": [
@@ -205,6 +238,18 @@
         {
           "command": "taskchord.work.openOnGitHub",
           "when": "false"
+        },
+        {
+          "command": "taskchord.work.setActiveGoal",
+          "when": "false"
+        },
+        {
+          "command": "taskchord.work.clearActiveGoal",
+          "when": "isWorkspaceTrusted && taskchord.hasActiveGoal"
+        },
+        {
+          "command": "taskchord.work.copyCodexHandoff",
+          "when": "isWorkspaceTrusted && taskchord.hasActiveGoal"
         }
       ]
     },

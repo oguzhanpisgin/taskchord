@@ -1,22 +1,32 @@
 import { randomUUID } from "node:crypto";
-import type { RepositoryRef, ScaffoldFinding, WorkItem } from "@taskchord/contracts";
+import type {
+  ActiveGoal,
+  RemoteIssue,
+  RepositoryRef,
+  ScaffoldFinding,
+  WorkItem,
+} from "@taskchord/contracts";
 import { nodeProcessProbe } from "@taskchord/doctor";
-import { createGitHubClient, type GitHubClient } from "@taskchord/github";
+import { confirmIssueWrite, createGitHubClient, type GitHubClient } from "@taskchord/github";
 import {
+  handoffFindings,
   newContractTemplate,
   parseContractDocument,
   parseIssueBody,
+  renderCodexHandoff,
   renderContractDocument,
   renderIssueWritePreview,
   scaffoldFindings,
 } from "@taskchord/work";
 import * as vscode from "vscode";
-import { DraftStore } from "./draftStore.js";
+import { type DraftMetadata, DraftStore } from "./draftStore.js";
 import { PreviewDocumentProvider } from "./previewProvider.js";
 import type { WorkTreeModel } from "./workModel.js";
 import { WorkTreeDataProvider } from "./workTree.js";
+import { canUseWork } from "./workTrust.js";
 
 const SELECTED_REPOSITORY_KEY = "taskchord.selectedRepositoryFolder.v1";
+const ACTIVE_GOAL_KEY = "taskchord.activeGoal.v1";
 
 function failureMessage(error: unknown): string {
   return error instanceof Error ? error.message : "The operation could not be completed.";
@@ -58,6 +68,7 @@ export class WorkController implements vscode.Disposable {
   readonly #drafts: DraftStore;
   readonly #previews = new PreviewDocumentProvider();
   readonly #diagnostics = vscode.languages.createDiagnosticCollection("taskchord-intent-scaffold");
+  readonly #goalStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   readonly #disposables: vscode.Disposable[] = [];
 
   constructor(
@@ -67,16 +78,20 @@ export class WorkController implements vscode.Disposable {
     this.#context = context;
     this.#github = github;
     this.#drafts = new DraftStore(context);
+    this.#goalStatus.name = "TaskChord Active Goal";
+    this.#goalStatus.command = "taskchord.work.copyCodexHandoff";
 
     this.#disposables.push(
       vscode.workspace.registerTextDocumentContentProvider("taskchord-preview", this.#previews),
       this.#diagnostics,
+      this.#goalStatus,
       vscode.workspace.onDidChangeTextDocument(({ document }) => this.#updateDiagnostics(document)),
       vscode.workspace.onDidOpenTextDocument((document) => this.#updateDiagnostics(document)),
       vscode.window.onDidChangeActiveTextEditor((editor) => {
         void this.#setDraftContext(editor?.document);
       }),
     );
+    this.#updateGoalProjection();
     void this.#setDraftContext(vscode.window.activeTextEditor?.document);
     if (vscode.workspace.isTrusted) {
       void vscode.commands.executeCommand("setContext", "taskchord.workState", "idle");
@@ -104,6 +119,17 @@ export class WorkController implements vscode.Disposable {
         "taskchord.work.openOnGitHub",
         (model: WorkTreeModel | undefined) => this.openOnGitHub(model),
       ),
+      vscode.commands.registerCommand(
+        "taskchord.work.setActiveGoal",
+        (model: WorkTreeModel | undefined) => this.setActiveGoal(model),
+      ),
+      vscode.commands.registerCommand("taskchord.work.clearActiveGoal", () =>
+        this.clearActiveGoal(),
+      ),
+      vscode.commands.registerCommand(
+        "taskchord.work.copyCodexHandoff",
+        (model: WorkTreeModel | undefined) => this.copyCodexHandoff(model),
+      ),
     ];
   }
 
@@ -127,11 +153,13 @@ export class WorkController implements vscode.Disposable {
       issue,
       parsedBody: parseIssueBody(issue.body),
     }));
+    const activeGoal = this.#activeGoal();
     this.provider.update({
       kind: "ready",
       repository,
       items,
       truncated: result.value.truncated,
+      ...(activeGoal?.repository === repository.nameWithOwner ? { activeGoal } : {}),
     });
     await vscode.commands.executeCommand(
       "setContext",
@@ -233,6 +261,14 @@ export class WorkController implements vscode.Disposable {
       void vscode.window.showInformationMessage("Open a TaskChord contract draft first.");
       return;
     }
+    if (draft.repository.isArchived || !draft.repository.canWrite) {
+      void vscode.window.showErrorMessage(
+        draft.repository.isArchived
+          ? "This repository is archived and cannot accept Issue writes."
+          : "The stored GitHub session does not have Issue write permission for this repository.",
+      );
+      return;
+    }
     const snapshot = parseContractDocument(document.getText());
     if (snapshot.parsedBody.kind !== "contract") {
       void vscode.window.showErrorMessage(
@@ -261,9 +297,65 @@ export class WorkController implements vscode.Disposable {
       preserveFocus: false,
       viewColumn: vscode.ViewColumn.Beside,
     });
-    void vscode.window.showInformationMessage(
-      "Read-only preview opened. GitHub submission is not enabled in this delivery part.",
+    const gapWarning =
+      findings.length === 0
+        ? "Intent Scaffold is complete."
+        : `Intent Scaffold gaps: ${findings.map((finding) => `${finding.severity} ${finding.field}`).join(", ")}.`;
+    const approval = await vscode.window.showWarningMessage(
+      `${gapWarning} Submit exactly the title and body shown in the read-only preview to ${draft.repository.nameWithOwner}?`,
+      { modal: true },
+      "Submit exact snapshot",
     );
+    if (approval !== "Submit exact snapshot") {
+      return;
+    }
+
+    const confirmed = confirmIssueWrite({
+      repository: draft.repository,
+      mode: draft.mode,
+      ...(draft.issueNumber === undefined ? {} : { issueNumber: draft.issueNumber }),
+      title: snapshot.title,
+      body: snapshot.body,
+      findings,
+      ...(draft.baseTitle === undefined ? {} : { baseTitle: draft.baseTitle }),
+      ...(draft.baseBody === undefined ? {} : { baseBody: draft.baseBody }),
+    });
+
+    if (draft.mode === "create" && draft.createAmbiguous === true) {
+      const reconciled = await this.#github.reconcileCreate(
+        draft.repository,
+        snapshot.parsedBody.contract.id,
+      );
+      if (!reconciled.ok) {
+        this.#showFailure(reconciled.failure.detail, reconciled.failure.nextAction);
+        return;
+      }
+      if (reconciled.value !== null) {
+        await this.#completeWrite(draft, reconciled.value, "adopted");
+        return;
+      }
+      const retryApproval = await vscode.window.showWarningMessage(
+        "No matching Issue was found in the latest 100 open or closed Issues. GitHub provides no idempotency guarantee. Create a new attempt with the exact previewed snapshot?",
+        { modal: true },
+        "Create new attempt",
+      );
+      if (retryApproval !== "Create new attempt") {
+        return;
+      }
+    }
+
+    const result =
+      draft.mode === "create"
+        ? await this.#github.createIssue(confirmed)
+        : await this.#github.editIssue(confirmed);
+    if (!result.ok) {
+      if (draft.mode === "create" && result.failure.kind === "ambiguous") {
+        await this.#drafts.update({ ...draft, createAmbiguous: true });
+      }
+      this.#showFailure(result.failure.detail, result.failure.nextAction);
+      return;
+    }
+    await this.#completeWrite(draft, result.value.issue, result.value.resolution);
   }
 
   async openOnGitHub(model: WorkTreeModel | undefined): Promise<void> {
@@ -277,14 +369,197 @@ export class WorkController implements vscode.Disposable {
     await vscode.env.openExternal(vscode.Uri.parse(model.item.issue.url));
   }
 
+  async setActiveGoal(model: WorkTreeModel | undefined): Promise<void> {
+    if (!this.#ensureTrusted()) {
+      return;
+    }
+    if (model?.kind !== "issue" || model.item.parsedBody.kind !== "contract") {
+      void vscode.window.showInformationMessage("Select a TaskChord contract Issue in Work first.");
+      return;
+    }
+    const latest = await this.#github.viewIssue(model.item.repository, model.item.issue.number);
+    if (!latest.ok) {
+      this.#showFailure(latest.failure.detail, latest.failure.nextAction);
+      return;
+    }
+    const parsed = parseIssueBody(latest.value.body);
+    if (parsed.kind !== "contract") {
+      void vscode.window.showWarningMessage(
+        "The Issue is no longer a supported TaskChord contract.",
+      );
+      return;
+    }
+    const findings = handoffFindings(latest.value.title, parsed.contract);
+    if (findings.length > 0) {
+      void vscode.window.showWarningMessage(
+        `Active Goal is blocked until these fields are complete: ${findings.map((finding) => finding.field).join(", ")}.`,
+      );
+      return;
+    }
+    const goal: ActiveGoal = {
+      repository: model.item.repository.nameWithOwner,
+      issueNumber: latest.value.number,
+      issueTitle: latest.value.title,
+      issueUrl: latest.value.url,
+      contractId: parsed.contract.id,
+      goal: parsed.contract.goal,
+      setAt: new Date().toISOString(),
+    };
+    await this.#context.workspaceState.update(ACTIVE_GOAL_KEY, goal);
+    this.#updateGoalProjection();
+    await this.refresh();
+  }
+
+  async clearActiveGoal(): Promise<void> {
+    if (!this.#ensureTrusted()) {
+      return;
+    }
+    await this.#context.workspaceState.update(ACTIVE_GOAL_KEY, undefined);
+    this.#updateGoalProjection();
+    if (this.provider.state.kind === "ready") {
+      this.provider.update({
+        kind: "ready",
+        repository: this.provider.state.repository,
+        items: this.provider.state.items,
+        truncated: this.provider.state.truncated,
+      });
+    }
+  }
+
+  async copyCodexHandoff(model: WorkTreeModel | undefined): Promise<void> {
+    if (!this.#ensureTrusted()) {
+      return;
+    }
+    const goal = this.#activeGoal();
+    if (goal === undefined) {
+      void vscode.window.showInformationMessage(
+        "Set a complete Issue Contract as the active Goal first.",
+      );
+      return;
+    }
+    const state = this.provider.state;
+    const selected =
+      model?.kind === "issue"
+        ? model.item
+        : state.kind === "ready"
+          ? state.items.find(
+              (item) =>
+                item.repository.nameWithOwner === goal.repository &&
+                item.issue.number === goal.issueNumber,
+            )
+          : undefined;
+    if (
+      selected === undefined ||
+      selected.repository.nameWithOwner !== goal.repository ||
+      selected.issue.number !== goal.issueNumber
+    ) {
+      void vscode.window.showInformationMessage(
+        "Refresh Work and select the Issue that owns the active Goal.",
+      );
+      return;
+    }
+    const latest = await this.#github.viewIssue(selected.repository, selected.issue.number);
+    if (!latest.ok) {
+      this.#showFailure(latest.failure.detail, latest.failure.nextAction);
+      return;
+    }
+    const parsed = parseIssueBody(latest.value.body);
+    if (parsed.kind !== "contract" || parsed.contract.id !== goal.contractId) {
+      void vscode.window.showWarningMessage(
+        "The active Goal no longer matches the latest Issue Contract. Set it again from Work.",
+      );
+      return;
+    }
+    const findings = handoffFindings(latest.value.title, parsed.contract);
+    if (findings.length > 0) {
+      void vscode.window.showWarningMessage(
+        `Codex handoff is blocked until these fields are complete: ${findings.map((finding) => finding.field).join(", ")}.`,
+      );
+      return;
+    }
+    const exactGoal: ActiveGoal = {
+      ...goal,
+      issueTitle: latest.value.title,
+      issueUrl: latest.value.url,
+      goal: parsed.contract.goal,
+    };
+    const handoff = renderCodexHandoff(exactGoal, parsed.contract, selected.repository);
+    const previewUri = this.#previews.set(`handoff-${goal.contractId}`, handoff);
+    const previewDocument = await vscode.workspace.openTextDocument(previewUri);
+    await vscode.window.showTextDocument(previewDocument, {
+      preview: true,
+      preserveFocus: false,
+      viewColumn: vscode.ViewColumn.Beside,
+    });
+    const approval = await vscode.window.showWarningMessage(
+      "Copy exactly the handoff shown in the read-only preview to the clipboard? TaskChord will not start Codex.",
+      { modal: true },
+      "Copy exact handoff",
+    );
+    if (approval !== "Copy exact handoff") {
+      return;
+    }
+    await vscode.env.clipboard.writeText(handoff);
+    void vscode.window.showInformationMessage("TaskChord Codex handoff copied to the clipboard.");
+  }
+
   dispose(): void {
     for (const disposable of this.#disposables) {
       disposable.dispose();
     }
   }
 
+  #activeGoal(): ActiveGoal | undefined {
+    return this.#context.workspaceState.get<ActiveGoal>(ACTIVE_GOAL_KEY);
+  }
+
+  #updateGoalProjection(): void {
+    const goal = this.#activeGoal();
+    void vscode.commands.executeCommand(
+      "setContext",
+      "taskchord.hasActiveGoal",
+      goal !== undefined,
+    );
+    if (goal === undefined) {
+      this.#goalStatus.hide();
+      return;
+    }
+    this.#goalStatus.text = `$(target) TaskChord Goal #${goal.issueNumber}`;
+    this.#goalStatus.tooltip = `${goal.repository} · ${goal.issueTitle}\n${goal.goal}`;
+    this.#goalStatus.show();
+  }
+
+  async #completeWrite(
+    draft: DraftMetadata,
+    issue: RemoteIssue,
+    resolution: "created" | "updated" | "adopted" | "verified",
+  ): Promise<void> {
+    this.#diagnostics.delete(vscode.Uri.parse(draft.uri));
+    const activeGoal = this.#activeGoal();
+    if (
+      activeGoal?.repository === draft.repository.nameWithOwner &&
+      activeGoal.issueNumber === issue.number
+    ) {
+      const parsed = parseIssueBody(issue.body);
+      if (parsed.kind === "contract" && parsed.contract.id === activeGoal.contractId) {
+        await this.#context.workspaceState.update(ACTIVE_GOAL_KEY, {
+          ...activeGoal,
+          issueTitle: issue.title,
+          issueUrl: issue.url,
+          goal: parsed.contract.goal,
+        } satisfies ActiveGoal);
+        this.#updateGoalProjection();
+      }
+    }
+    await this.#drafts.remove(draft);
+    await this.refresh();
+    void vscode.window.showInformationMessage(
+      `GitHub Issue #${issue.number} ${resolution}. The completed draft was removed.`,
+    );
+  }
+
   #ensureTrusted(): boolean {
-    if (vscode.workspace.isTrusted) {
+    if (canUseWork(vscode.workspace.isTrusted)) {
       return true;
     }
     this.provider.update({ kind: "untrusted" });

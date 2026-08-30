@@ -74,4 +74,23 @@ describe("Work tree model", () => {
     expect(toWorkTreeModels({ kind: "select-repository" })[0]).toMatchObject({ icon: "repo" });
     expect(toWorkTreeModels({ kind: "untrusted" })[0]).toMatchObject({ icon: "shield" });
   });
+
+  it("projects the local active Goal ahead of Issue items", () => {
+    const models = toWorkTreeModels({
+      kind: "ready",
+      repository,
+      items: [issue({ kind: "unstructured" })],
+      truncated: false,
+      activeGoal: {
+        repository: "owner/repo",
+        issueNumber: 7,
+        issueTitle: "Ship it",
+        issueUrl: "https://github.com/owner/repo/issues/7",
+        contractId: "12345678",
+        goal: "Deliver the accepted outcome",
+        setAt: "2026-08-30T00:00:00Z",
+      },
+    });
+    expect(models[0]).toMatchObject({ kind: "message", icon: "target" });
+  });
 });

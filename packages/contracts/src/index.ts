@@ -119,6 +119,28 @@ export interface ActiveGoal {
   setAt: string;
 }
 
+export interface IssueWriteSnapshot {
+  repository: RepositoryRef;
+  mode: "create" | "edit";
+  issueNumber?: number;
+  title: string;
+  body: string;
+  findings: readonly ScaffoldFinding[];
+  baseTitle?: string;
+  baseBody?: string;
+}
+
+declare const confirmedIssueWrite: unique symbol;
+
+export type ConfirmedIssueWrite = IssueWriteSnapshot & {
+  readonly [confirmedIssueWrite]: true;
+};
+
+export interface IssueWriteOutcome {
+  issue: RemoteIssue;
+  resolution: "created" | "updated" | "adopted" | "verified";
+}
+
 export type GhFailureKind =
   | "denied"
   | "missing"
