@@ -34,6 +34,21 @@ describe("nodeProcessProbe", () => {
     expect(result.stdout).toMatch(/^v\d+/u);
   });
 
+  it("passes exact stdin and supports a request output limit", async () => {
+    const input = "line one\n0123456789012345678901234567890123456789\n";
+    const result = await nodeProcessProbe.run({
+      command: "node",
+      args: [
+        "-e",
+        "process.stdin.setEncoding('utf8');let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>process.stdout.write(s))",
+      ],
+      timeoutMs: 3_000,
+      stdin: input,
+      maxBufferBytes: 4_096,
+    });
+    expect(result).toMatchObject({ outcome: "completed", exitCode: 0, stdout: input });
+  });
+
   it("bounds a long-running probe", async () => {
     const result = await nodeProcessProbe.run({
       command: "node",

@@ -315,7 +315,7 @@ MVP'de çoklu tracker, module registry, bulut servisi veya ayrı web dashboard y
 - Aynı kontrol listesini sunan CLI text/JSON çıktısı ve native Setup view.
 - Kullanıcı tetiklemeli Doctor ile Setup, Work ve Proof native view shell'i.
 
-### Slice 002 — Doctor Aggregator v2 — sıradaki aday
+### Slice 002 — Doctor Aggregator v2 — tamamlandı
 
 - Native `codex doctor --json` sonucunu güvenli biçimde toplama.
 - Git, GitHub, Node/pnpm, WSL ve repository readiness kontrolleri.
@@ -323,12 +323,15 @@ MVP'de çoklu tracker, module registry, bulut servisi veya ayrı web dashboard y
 - CLI ve Setup view için aynı aggregate report.
 - Tamamen salt-okunur davranış.
 
-### Slice 003 — Issue Contract + Goal
+### Slice 003 — Issue Contract + Goal — tamamlandı
 
-- IDE içinde GitHub Issue listeleme ve oluşturma.
+- IDE içinde GitHub Issue listeleme, tam önizlemeli oluşturma ve düzenleme.
 - Outcome, Boundaries, Acceptance, Verification ve Goal alanları.
 - Deterministik Intent Scaffold.
 - Issue yazması ve Codex handoff için ayrı önizleme/onay.
+- Yerel Active Goal projection; GitHub'a ek metadata yazılmaz.
+- Belirsiz create uzlaştırması ve edit conflict/readback koruması.
+- Canlı GitHub create/edit kabul kanıtı, kesin payload için ayrı sahip onayı verilene kadar beklemededir.
 
 ### Slice 004 — Deterministic Proof
 

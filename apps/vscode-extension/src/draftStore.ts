@@ -11,6 +11,7 @@ export interface DraftMetadata {
   issueNumber?: number;
   baseTitle?: string;
   baseBody?: string;
+  createAmbiguous?: boolean;
 }
 
 export class DraftStore {
@@ -63,6 +64,12 @@ export class DraftStore {
       this.all().filter((candidate) => candidate.id !== draft.id),
     );
     await vscode.workspace.fs.delete(vscode.Uri.parse(draft.uri), { useTrash: false });
+  }
+
+  async update(draft: DraftMetadata): Promise<void> {
+    const drafts = this.all().filter((candidate) => candidate.id !== draft.id);
+    drafts.push(draft);
+    await this.#context.workspaceState.update(DRAFTS_KEY, drafts);
   }
 
   async open(draft: DraftMetadata): Promise<vscode.TextDocument> {

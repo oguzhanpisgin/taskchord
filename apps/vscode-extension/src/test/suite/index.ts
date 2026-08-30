@@ -43,6 +43,16 @@ export async function run(): Promise<void> {
     "limited",
     "Work must be limited in untrusted workspaces while Doctor remains available.",
   );
+  const menuGroups = extension.packageJSON.contributes?.menus as
+    | Record<string, Array<{ command: string; when?: string }>>
+    | undefined;
+  const visibleWorkMenus = Object.values(menuGroups ?? {})
+    .flat()
+    .filter((entry) => entry.command.startsWith("taskchord.work.") && entry.when !== "false");
+  assert.ok(
+    visibleWorkMenus.every((entry) => entry.when?.includes("isWorkspaceTrusted")),
+    "Every visible Work menu entry must be hidden in untrusted workspaces.",
+  );
 
   const commands = await vscode.commands.getCommands(true);
   assert.ok(commands.includes("taskchord.runDoctor"), "Run Doctor command must be registered.");
@@ -53,6 +63,9 @@ export async function run(): Promise<void> {
     "taskchord.work.editContract",
     "taskchord.work.previewAndSubmit",
     "taskchord.work.openOnGitHub",
+    "taskchord.work.setActiveGoal",
+    "taskchord.work.clearActiveGoal",
+    "taskchord.work.copyCodexHandoff",
   ]) {
     assert.ok(commands.includes(command), `${command} must be registered.`);
   }

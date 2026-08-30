@@ -1,4 +1,12 @@
-import type { GhFailure, GhResult, RemoteIssue, RepositoryRef } from "@taskchord/contracts";
+import type {
+  ConfirmedIssueWrite,
+  GhFailure,
+  GhResult,
+  IssueWriteOutcome,
+  IssueWriteSnapshot,
+  RemoteIssue,
+  RepositoryRef,
+} from "@taskchord/contracts";
 import {
   type ProbeRequest,
   type ProbeResult,
@@ -18,6 +26,16 @@ export interface GitHubClient {
   ): Promise<GhResult<RepositoryRef>>;
   listOpenIssues(repository: RepositoryRef): Promise<GhResult<IssueList>>;
   viewIssue(repository: RepositoryRef, issueNumber: number): Promise<GhResult<RemoteIssue>>;
+  reconcileCreate(
+    repository: RepositoryRef,
+    contractId: string,
+  ): Promise<GhResult<RemoteIssue | null>>;
+  createIssue(write: ConfirmedIssueWrite): Promise<GhResult<IssueWriteOutcome>>;
+  editIssue(write: ConfirmedIssueWrite): Promise<GhResult<IssueWriteOutcome>>;
+}
+
+export function confirmIssueWrite(snapshot: IssueWriteSnapshot): ConfirmedIssueWrite {
+  return snapshot as ConfirmedIssueWrite;
 }
 
 function failure(kind: GhFailure["kind"], detail: string, nextAction: string): GhResult<never> {
@@ -41,7 +59,26 @@ function processFailure(result: ProbeResult, operation: string): GhResult<never>
   if (result.exitCode === 4) {
     return failure("unauthenticated", detail, "Sign in with GitHub CLI, then retry.");
   }
+  if (/\b403\b|forbidden|resource not accessible|permission/iu.test(result.stderr)) {
+    return failure("forbidden", detail, "Ask a repository administrator for Issue write access.");
+  }
   return failure("error", detail, "Review GitHub CLI access, then retry.");
+}
+
+function definitelyNotWritten(result: ProbeResult): boolean {
+  return (
+    result.outcome === "denied" ||
+    result.outcome === "not-found" ||
+    (result.outcome === "completed" &&
+      (result.exitCode === 4 ||
+        /\b403\b|forbidden|resource not accessible|permission/iu.test(result.stderr)))
+  );
+}
+
+function issueNumberFromOutput(output: string): number | undefined {
+  const value = /https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/iu.exec(output)?.[1];
+  const parsed = value === undefined ? Number.NaN : Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -119,6 +156,119 @@ async function run(probe: ProcessProbe, request: ProbeRequest): Promise<ProbeRes
   } catch {
     return { outcome: "error", exitCode: null, stdout: "", stderr: "", durationMs: 0 };
   }
+}
+
+function contractId(body: string): string | undefined {
+  return /^<!--\s*taskchord:contract\s+v=1\s+id=([A-Za-z0-9._-]{8,80})\s*-->$/imu.exec(body)?.[1];
+}
+
+function writePrecondition(
+  write: ConfirmedIssueWrite,
+  mode: "create" | "edit",
+): GhResult<never> | undefined {
+  if (write.mode !== mode) {
+    return failure("error", `Expected a confirmed ${mode} snapshot.`, "Open a new preview.");
+  }
+  if (write.repository.isArchived) {
+    return failure("archived", "The repository is archived.", "Use an active repository.");
+  }
+  if (!write.repository.canWrite) {
+    return failure(
+      "read-only",
+      "The stored GitHub session cannot write Issues.",
+      "Use an account with write access.",
+    );
+  }
+  return undefined;
+}
+
+async function readIssue(
+  probe: ProcessProbe,
+  repository: RepositoryRef,
+  issueNumber: number,
+): Promise<GhResult<RemoteIssue>> {
+  const result = await run(probe, {
+    command: "gh",
+    args: [
+      "issue",
+      "view",
+      String(issueNumber),
+      "-R",
+      repository.nameWithOwner,
+      "--json",
+      "number,title,body,url,updatedAt,author",
+    ],
+    cwd: repository.workspacePath,
+    timeoutMs: 10_000,
+    maxBufferBytes: 2_097_152,
+  });
+  if (result.outcome !== "completed" || result.exitCode !== 0) {
+    return processFailure(result, "Issue reading");
+  }
+  try {
+    const issue = parseIssue(JSON.parse(result.stdout));
+    return issue === undefined
+      ? failure("invalid-output", "GitHub CLI returned an unknown Issue shape.", "Retry.")
+      : { ok: true, value: issue };
+  } catch {
+    return failure("invalid-output", "GitHub CLI returned invalid Issue data.", "Retry.");
+  }
+}
+
+async function reconcile(
+  probe: ProcessProbe,
+  repository: RepositoryRef,
+  expectedId: string,
+): Promise<GhResult<RemoteIssue | null>> {
+  const result = await run(probe, {
+    command: "gh",
+    args: [
+      "issue",
+      "list",
+      "-R",
+      repository.nameWithOwner,
+      "--state",
+      "all",
+      "--limit",
+      "100",
+      "--json",
+      "number,title,body,url,updatedAt,author",
+    ],
+    cwd: repository.workspacePath,
+    timeoutMs: 15_000,
+    maxBufferBytes: 8_388_608,
+  });
+  if (result.outcome !== "completed" || result.exitCode !== 0) {
+    return processFailure(result, "Create reconciliation");
+  }
+  let values: unknown;
+  try {
+    values = JSON.parse(result.stdout);
+  } catch {
+    return failure("invalid-output", "GitHub CLI returned invalid reconciliation data.", "Retry.");
+  }
+  if (!Array.isArray(values)) {
+    return failure(
+      "invalid-output",
+      "GitHub CLI returned an unknown reconciliation shape.",
+      "Retry.",
+    );
+  }
+  const issues = values.map(parseIssue);
+  if (issues.some((issue) => issue === undefined)) {
+    return failure("invalid-output", "A reconciled Issue had an unknown shape.", "Retry.");
+  }
+  const matches = (issues as RemoteIssue[]).filter(
+    (issue) => contractId(issue.body) === expectedId,
+  );
+  if (matches.length > 1) {
+    return failure(
+      "ambiguous",
+      `More than one Issue uses TaskChord contract id ${expectedId}.`,
+      "Open the matching Issues on GitHub and resolve the duplicate manually.",
+    );
+  }
+  return { ok: true, value: matches[0] ?? null };
 }
 
 export function createGitHubClient(probe: ProcessProbe): GitHubClient {
@@ -201,6 +351,7 @@ export function createGitHubClient(probe: ProcessProbe): GitHubClient {
         ],
         cwd: repository.workspacePath,
         timeoutMs: 15_000,
+        maxBufferBytes: 8_388_608,
       });
       if (result.outcome !== "completed" || result.exitCode !== 0) {
         return processFailure(result, "Issue listing");
@@ -229,31 +380,143 @@ export function createGitHubClient(probe: ProcessProbe): GitHubClient {
     },
 
     async viewIssue(repository, issueNumber) {
+      return readIssue(probe, repository, issueNumber);
+    },
+
+    async reconcileCreate(repository, expectedId) {
+      return reconcile(probe, repository, expectedId);
+    },
+
+    async createIssue(write) {
+      const invalid = writePrecondition(write, "create");
+      if (invalid !== undefined) {
+        return invalid;
+      }
+      const expectedId = contractId(write.body);
+      if (expectedId === undefined) {
+        return failure(
+          "invalid-output",
+          "The confirmed body has no supported TaskChord contract id.",
+          "Open a new preview from a valid contract draft.",
+        );
+      }
       const result = await run(probe, {
         command: "gh",
         args: [
           "issue",
-          "view",
-          String(issueNumber),
+          "create",
           "-R",
-          repository.nameWithOwner,
-          "--json",
-          "number,title,body,url,updatedAt,author",
+          write.repository.nameWithOwner,
+          "--title",
+          write.title,
+          "--body-file",
+          "-",
         ],
-        cwd: repository.workspacePath,
-        timeoutMs: 10_000,
+        cwd: write.repository.workspacePath,
+        timeoutMs: 20_000,
+        stdin: write.body,
+        maxBufferBytes: 1_048_576,
       });
-      if (result.outcome !== "completed" || result.exitCode !== 0) {
-        return processFailure(result, "Issue reading");
+      if (result.outcome === "completed" && result.exitCode === 0) {
+        const issueNumber = issueNumberFromOutput(result.stdout);
+        if (issueNumber !== undefined) {
+          const issue = await readIssue(probe, write.repository, issueNumber);
+          if (issue.ok) {
+            return { ok: true, value: { issue: issue.value, resolution: "created" } };
+          }
+        }
+      } else if (definitelyNotWritten(result)) {
+        return processFailure(result, "Issue creation");
       }
-      try {
-        const issue = parseIssue(JSON.parse(result.stdout));
-        return issue === undefined
-          ? failure("invalid-output", "GitHub CLI returned an unknown Issue shape.", "Retry.")
-          : { ok: true, value: issue };
-      } catch {
-        return failure("invalid-output", "GitHub CLI returned invalid Issue data.", "Retry.");
+
+      const reconciled = await reconcile(probe, write.repository, expectedId);
+      if (!reconciled.ok) {
+        return reconciled;
       }
+      if (reconciled.value !== null) {
+        return {
+          ok: true,
+          value: { issue: reconciled.value, resolution: "adopted" },
+        };
+      }
+      return failure(
+        "ambiguous",
+        "Unknown result: no matching Issue was found after the create attempt.",
+        "Retry only after another reconciliation and a new explicit approval. GitHub does not provide an idempotency guarantee for this operation.",
+      );
+    },
+
+    async editIssue(write) {
+      const invalid = writePrecondition(write, "edit");
+      if (invalid !== undefined) {
+        return invalid;
+      }
+      if (
+        write.issueNumber === undefined ||
+        write.baseTitle === undefined ||
+        write.baseBody === undefined
+      ) {
+        return failure(
+          "error",
+          "The confirmed edit has no complete base snapshot.",
+          "Reopen the Issue as a new draft.",
+        );
+      }
+      const current = await readIssue(probe, write.repository, write.issueNumber);
+      if (!current.ok) {
+        return current;
+      }
+      if (current.value.title !== write.baseTitle || current.value.body !== write.baseBody) {
+        return failure(
+          "ambiguous",
+          "Edit conflict: the GitHub Issue changed after this draft was opened.",
+          "Refresh Work and open a new draft from the latest Issue.",
+        );
+      }
+      const result = await run(probe, {
+        command: "gh",
+        args: [
+          "issue",
+          "edit",
+          String(write.issueNumber),
+          "-R",
+          write.repository.nameWithOwner,
+          "--title",
+          write.title,
+          "--body-file",
+          "-",
+        ],
+        cwd: write.repository.workspacePath,
+        timeoutMs: 20_000,
+        stdin: write.body,
+        maxBufferBytes: 1_048_576,
+      });
+      if (
+        (result.outcome !== "completed" || result.exitCode !== 0) &&
+        definitelyNotWritten(result)
+      ) {
+        return processFailure(result, "Issue edit");
+      }
+      const readback = await readIssue(probe, write.repository, write.issueNumber);
+      if (
+        readback.ok &&
+        readback.value.title === write.title &&
+        readback.value.body === write.body
+      ) {
+        return {
+          ok: true,
+          value: {
+            issue: readback.value,
+            resolution:
+              result.outcome === "completed" && result.exitCode === 0 ? "updated" : "verified",
+          },
+        };
+      }
+      return failure(
+        "ambiguous",
+        "Unknown result: the intended edit could not be verified by reading the Issue again.",
+        "Refresh the Issue on GitHub before making another edit attempt.",
+      );
     },
   };
 }

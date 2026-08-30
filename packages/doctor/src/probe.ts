@@ -10,6 +10,8 @@ export interface ProbeRequest {
   cwd?: string;
   timeoutMs: number;
   signal?: AbortSignal;
+  stdin?: string;
+  maxBufferBytes?: number;
 }
 
 export interface ProbeResult {
@@ -53,14 +55,14 @@ export const nodeProcessProbe: ProcessProbe = {
     }
 
     return new Promise((resolve) => {
-      execFile(
+      const child = execFile(
         request.command,
         [...request.args],
         {
           cwd: request.cwd,
           env: filteredEnvironment(),
           encoding: "utf8",
-          maxBuffer: 1_048_576,
+          maxBuffer: Math.min(Math.max(request.maxBufferBytes ?? 1_048_576, 1_024), 8_388_608),
           timeout: request.timeoutMs,
           killSignal: "SIGKILL",
           windowsHide: true,
@@ -98,6 +100,10 @@ export const nodeProcessProbe: ProcessProbe = {
           resolve({ outcome: "error", exitCode: null, stdout, stderr, durationMs });
         },
       );
+      child.stdin?.on("error", () => {
+        // The callback above owns process errors; EPIPE must not become an uncaught event.
+      });
+      child.stdin?.end(request.stdin ?? "");
     });
   },
 };
