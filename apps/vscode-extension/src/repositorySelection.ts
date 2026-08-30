@@ -14,7 +14,13 @@ export type RepositorySelectionResult =
     };
 
 export class RepositorySelectionStore {
+  #currentRepository: RepositoryRef | undefined;
+
   constructor(private readonly context: vscode.ExtensionContext) {}
+
+  get currentRepository(): RepositoryRef | undefined {
+    return this.#currentRepository;
+  }
 
   async select(): Promise<boolean> {
     const folders = vscode.workspace.workspaceFolders ?? [];
@@ -23,6 +29,7 @@ export class RepositorySelectionStore {
       { title: "Select the GitHub repository TaskChord should use" },
     );
     if (selected === undefined) return false;
+    this.#currentRepository = undefined;
     await this.context.workspaceState.update(
       SELECTED_REPOSITORY_KEY,
       selected.folder.uri.toString(),
@@ -54,13 +61,15 @@ export class RepositorySelectionStore {
       };
     }
     const result = await github.resolveRepository(folder.uri.toString(), folder.uri.fsPath);
-    return result.ok
-      ? { ok: true, repository: result.value }
-      : {
-          ok: false,
-          kind: "github",
-          message: result.failure.detail,
-          nextAction: result.failure.nextAction,
-        };
+    if (result.ok) {
+      this.#currentRepository = result.value;
+      return { ok: true, repository: result.value };
+    }
+    return {
+      ok: false,
+      kind: "github",
+      message: result.failure.detail,
+      nextAction: result.failure.nextAction,
+    };
   }
 }

@@ -37,6 +37,8 @@ export interface SymphonyObservation {
     retrying?: number;
   };
   associations: SymphonyAssociationSummary;
+  /** Repository identity used when the association counts were computed. */
+  associationRepository?: string;
   reason?: string;
 }
 
@@ -301,6 +303,7 @@ export async function observeSymphony(
     generatedAt: parsed.generatedAt,
     counts: parsed.counts,
     associations: associateSymphonyItems(parsed.items, options.repository, parsed.truncated),
+    ...(options.repository === undefined ? {} : { associationRepository: options.repository }),
   };
 }
 

@@ -14,7 +14,9 @@ Slice 003 provides the native Issue Contract Workbench: on-demand open-Issue lis
 
 Slice 004 provides deterministic Proof for changed files, approved Build and Test package-script runs, commit identity, PR/CI state, and an explicit local Human decision. Each strip remains independently visible; verification runs require an exact native Markdown preview and separate confirmation, and stored evidence becomes stale when its script definition or workspace fingerprint changes. Proof does not fetch, write to GitHub, or run free-form commands.
 
-The next not-yet-implemented candidate is **Slice 005 — Optional runners**.
+Slice 005 provides an on-demand, read-only optional-runner summary in Setup and Work. It reads only the local Symphony preview state endpoint after an explicit refresh, labels its counts as instance-wide, and keeps native Codex clipboard handoff available in every runner state. It also detects whether `codex app-server --help` is available without starting or connecting to App Server.
+
+Codex App Server client integration, Symphony dispatch metadata writes, and runner execution remain explicitly deferred. The next candidate has not been started.
 
 ## Development
 

@@ -2,6 +2,7 @@ import type { DoctorReport } from "@taskchord/contracts";
 import { deniedProcessProbe, nodeProcessProbe, runDoctor } from "@taskchord/doctor";
 import { observeOptionalRunners, type SymphonySettings } from "@taskchord/runners";
 import * as vscode from "vscode";
+import type { RunnerStateStore } from "./runnerState.js";
 import type { SetupTreeDataProvider } from "./setupTree.js";
 
 function settings(): SymphonySettings {
@@ -13,7 +14,11 @@ function settings(): SymphonySettings {
 }
 
 export class SetupController {
-  constructor(private readonly provider: SetupTreeDataProvider) {}
+  constructor(
+    private readonly provider: SetupTreeDataProvider,
+    private readonly runners: RunnerStateStore,
+    private readonly selectedRepository: () => Promise<string | undefined>,
+  ) {}
 
   registerCommands(): vscode.Disposable[] {
     return [
@@ -35,7 +40,11 @@ export class SetupController {
 
   async refreshRunners(): Promise<void> {
     if (!this.#ensureTrusted()) return;
-    const report = await observeOptionalRunners(settings(), nodeProcessProbe);
+    const repository = await this.selectedRepository();
+    const report = await observeOptionalRunners(settings(), nodeProcessProbe, {
+      ...(repository === undefined ? {} : { repository }),
+    });
+    this.runners.update(report);
     this.provider.updateRunners(report);
   }
 
