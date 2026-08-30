@@ -1,5 +1,5 @@
 import type { DoctorReport } from "@taskchord/contracts";
-import { runDoctor } from "@taskchord/doctor";
+import { deniedProcessProbe, runDoctor } from "@taskchord/doctor";
 import * as vscode from "vscode";
 import { SetupTreeDataProvider } from "./setupTree.js";
 
@@ -16,7 +16,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerTreeDataProvider("taskchord.work", emptyTreeDataProvider),
     vscode.window.registerTreeDataProvider("taskchord.proof", emptyTreeDataProvider),
     vscode.commands.registerCommand("taskchord.runDoctor", async (): Promise<DoctorReport> => {
-      const report = await runDoctor();
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const report = await runDoctor({
+        ...(vscode.workspace.isTrusted ? {} : { probe: deniedProcessProbe }),
+        ...(vscode.workspace.isTrusted && workspaceRoot !== undefined ? { workspaceRoot } : {}),
+      });
       setupProvider.update(report);
       return report;
     }),

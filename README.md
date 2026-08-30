@@ -8,9 +8,9 @@ GitHub is the durable work, PR, and CI truth. Codex is the only code writer. Sym
 
 ## Current status
 
-Slice 001 was implemented at commit `3e1a2c7` and then realigned with the current architecture. It now provides an asynchronous, multi-check DoctorReport foundation while still producing only one read-only environment check. The CLI and native Setup view render the shared check list and derive readiness from every check; Doctor runs only when the user requests it.
+Slice 001 was implemented at commit `3e1a2c7` and then realigned with the current architecture. Slice 002 Part 1 now adds the read-only measurement foundation and host-local checks for the environment, Git, Node.js, GitHub CLI authentication, and the open repository. The CLI and native Setup view render the same redacted, target-bound report; Doctor still runs only when the user requests it.
 
-The next candidate is the not-yet-implemented **Slice 002 — Doctor Aggregator v2**. It will extend the existing environment core with native `codex doctor --json`, Git, GitHub, Node/pnpm, WSL, and repository-readiness checks. Slice 002 requires its own approval before implementation.
+Slice 002 Part 2 is not implemented. It is reserved for native `codex doctor --json` ingestion plus Windows/WSL target discovery and per-target aggregation.
 
 ## Development
 

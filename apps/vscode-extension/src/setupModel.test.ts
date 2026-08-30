@@ -11,20 +11,40 @@ const report: DoctorReport = {
     architecture: "x64",
     release: "10.0.26100",
   },
+  targets: [
+    {
+      id: "windows-host",
+      kind: "windows",
+      label: "Windows host",
+      facts: {
+        kind: "windows",
+        platform: "win32",
+        architecture: "x64",
+        release: "10.0.26100",
+      },
+    },
+  ],
   checks: [
     {
       id: "environment",
+      targetId: "windows-host",
       label: "Environment",
       status: "ready",
+      source: "runtime",
       message: "Detected Windows.",
       evidence: { platform: "win32" },
+      durationMs: 1,
     },
     {
       id: "node",
+      targetId: "windows-host",
       label: "Node.js",
       status: "unverified",
+      source: "process",
       message: "Node.js was not checked.",
       evidence: {},
+      durationMs: 1,
+      nextAction: "Install Node.js.",
     },
   ],
   summary: { status: "unverified", ready: 1, unverified: 1, failed: 0 },
@@ -44,6 +64,8 @@ describe("toSetupItems", () => {
       ["node", "unverified"],
     ]);
     expect(items[0]?.tooltip).toContain("Doctor environment: Windows");
+    expect(items[0]?.tooltip).toContain("Target: Windows host");
     expect(items[0]?.tooltip).toContain("platform: win32");
+    expect(items[1]?.tooltip).toContain("Next action: Install Node.js.");
   });
 });

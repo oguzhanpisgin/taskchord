@@ -53,9 +53,11 @@ export async function run(): Promise<void> {
   assert.notEqual(report.environment.kind, "unknown", "The integration host must be detected.");
   const environmentCheck = report.checks.find((check) => check.id === "environment");
   assert.equal(environmentCheck?.status, "ready", "The integration host must be ready.");
-  assert.ok(report.checks.length >= 1, "Run Doctor must return at least one check.");
+  assert.ok(report.checks.length >= 5, "Run Doctor must return the Part 1 checks.");
+  const targetIds = new Set(report.targets.map((target) => target.id));
   for (const check of report.checks) {
     assert.ok(check.id.length > 0, "Every Doctor check must have an id.");
     assert.ok(check.label.length > 0, "Every Doctor check must have a label.");
+    assert.ok(targetIds.has(check.targetId), "Every Doctor check must resolve to a target.");
   }
 }
