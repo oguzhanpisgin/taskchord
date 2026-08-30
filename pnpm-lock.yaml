@@ -50,6 +50,9 @@ importers:
       '@taskchord/proof':
         specifier: workspace:*
         version: link:../../packages/proof
+      '@taskchord/runners':
+        specifier: workspace:*
+        version: link:../../packages/runners
       '@taskchord/work':
         specifier: workspace:*
         version: link:../../packages/work
@@ -79,6 +82,12 @@ importers:
         version: link:../doctor
 
   packages/proof:
+    dependencies:
+      '@taskchord/doctor':
+        specifier: workspace:*
+        version: link:../doctor
+
+  packages/runners:
     dependencies:
       '@taskchord/doctor':
         specifier: workspace:*

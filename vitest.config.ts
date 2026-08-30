@@ -14,6 +14,9 @@ export default defineConfig({
         new URL("./packages/github/src/index.ts", import.meta.url),
       ),
       "@taskchord/proof": fileURLToPath(new URL("./packages/proof/src/index.ts", import.meta.url)),
+      "@taskchord/runners": fileURLToPath(
+        new URL("./packages/runners/src/index.ts", import.meta.url),
+      ),
       "@taskchord/work": fileURLToPath(new URL("./packages/work/src/index.ts", import.meta.url)),
     },
   },

@@ -1,4 +1,5 @@
 import type { CheckStatus, DoctorReport } from "@taskchord/contracts";
+import type { OptionalRunnerReport } from "@taskchord/runners";
 import * as vscode from "vscode";
 import { toSetupItems } from "./setupModel.js";
 
@@ -21,6 +22,7 @@ export class SetupTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
   readonly #onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.#onDidChangeTreeData.event;
   #report: DoctorReport | undefined;
+  #runners: OptionalRunnerReport | undefined;
 
   constructor(report?: DoctorReport) {
     this.#report = report;
@@ -31,12 +33,17 @@ export class SetupTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
     this.#onDidChangeTreeData.fire();
   }
 
+  updateRunners(report: OptionalRunnerReport): void {
+    this.#runners = report;
+    this.#onDidChangeTreeData.fire();
+  }
+
   getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
     return element;
   }
 
   getChildren(): vscode.ProviderResult<vscode.TreeItem[]> {
-    return toSetupItems(this.#report).map((model) => {
+    return toSetupItems(this.#report, this.#runners).map((model) => {
       const item = new vscode.TreeItem(model.label, vscode.TreeItemCollapsibleState.None);
       item.description = model.description;
       item.iconPath = statusIcon(model.status);
