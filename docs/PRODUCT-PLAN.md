@@ -42,9 +42,11 @@ Bu sınır şu kuralları doğurur:
 
 - Strict TypeScript/pnpm monorepo temeli.
 - Windows, WSL, macOS, Linux ve unknown ortam tespiti.
-- Aynı doctor çekirdeğini kullanan text ve JSON CLI çıktısı.
+- Async ve birden fazla kontrolü taşıyabilen ortak DoctorReport temeli.
+- Tüm kontrol listesini gösteren text/JSON CLI ve native Setup view.
+- Her kontrolü sayarak başarısızlığa öncelik veren readiness özeti.
 - TaskChord Workbench altında native Setup, Work ve Proof view'ları.
-- Salt-okunur `Run Doctor` komutu ve extension smoke testi.
+- Yalnız kullanıcı isteğiyle çalışan salt-okunur `Run Doctor` komutu ve extension smoke testi.
 
 Slice 001 doctor çekirdeği atılmayacaktır. Slice 002'de TaskChord Doctor Aggregator'ın environment katmanı olarak genişletilecektir.
 
@@ -157,6 +159,8 @@ Her kontrol:
 - kullanıcıya önerilen sonraki eylemi
 
 gösterir. Erişilemeyen veya doğrulanamayan bir kontrol yeşil sayılmaz.
+
+Slice 001 bu aggregator sözleşmesini tek `environment` kontrolüyle başlatır. Rapor özeti bütün kontrollerden türetilir: herhangi bir `failed` sonuç raporu `failed`, aksi hâlde herhangi bir `unverified` sonuç raporu `unverified` yapar; boş kontrol listesi `ready` sayılamaz. Hedef ortam, kaynak ve sonraki eylem gibi yeni üretici alanları gerçek kontrolleriyle birlikte Slice 002'de sürümlenecektir.
 
 ### Windows ve WSL
 
@@ -307,8 +311,9 @@ MVP'de çoklu tracker, module registry, bulut servisi veya ayrı web dashboard y
 ### Slice 001 — Native Workbench + read-only environment doctor — tamamlandı
 
 - Ortak contracts ve environment detection.
-- CLI text/JSON çıktısı.
-- Setup, Work ve Proof native view shell'i.
+- Async, multi-check DoctorReport ve bütün kontrollerden türetilen özet.
+- Aynı kontrol listesini sunan CLI text/JSON çıktısı ve native Setup view.
+- Kullanıcı tetiklemeli Doctor ile Setup, Work ve Proof native view shell'i.
 
 ### Slice 002 — Doctor Aggregator v2 — sıradaki aday
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { DoctorReport } from "@taskchord/contracts";
+import { DOCTOR_SCHEMA_VERSION, type DoctorReport } from "@taskchord/contracts";
 import * as vscode from "vscode";
 
 export async function run(): Promise<void> {
@@ -34,8 +34,8 @@ export async function run(): Promise<void> {
   )?.map((entry) => entry.view);
   assert.deepEqual(
     welcomeViews,
-    ["taskchord.work", "taskchord.proof"],
-    "Work and Proof must use native empty-state welcome content.",
+    ["taskchord.setup", "taskchord.work", "taskchord.proof"],
+    "Setup, Work, and Proof must use native empty-state welcome content.",
   );
 
   const commands = await vscode.commands.getCommands(true);
@@ -45,7 +45,17 @@ export async function run(): Promise<void> {
   }
 
   const report = await vscode.commands.executeCommand<DoctorReport>("taskchord.runDoctor");
-  assert.equal(report.schemaVersion, 1, "Run Doctor must return the shared DoctorReport contract.");
+  assert.equal(
+    report.schemaVersion,
+    DOCTOR_SCHEMA_VERSION,
+    "Run Doctor must return the shared DoctorReport contract.",
+  );
   assert.notEqual(report.environment.kind, "unknown", "The integration host must be detected.");
-  assert.equal(report.summary.status, "ready", "The integration host must be ready.");
+  const environmentCheck = report.checks.find((check) => check.id === "environment");
+  assert.equal(environmentCheck?.status, "ready", "The integration host must be ready.");
+  assert.ok(report.checks.length >= 1, "Run Doctor must return at least one check.");
+  for (const check of report.checks) {
+    assert.ok(check.id.length > 0, "Every Doctor check must have an id.");
+    assert.ok(check.label.length > 0, "Every Doctor check must have a label.");
+  }
 }

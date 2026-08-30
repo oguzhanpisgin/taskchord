@@ -13,7 +13,12 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["packages/**/*.test.ts", "apps/doctor-cli/**/*.test.ts"],
+    include: [
+      "packages/**/*.test.ts",
+      "apps/doctor-cli/**/*.test.ts",
+      "apps/vscode-extension/src/**/*.test.ts",
+    ],
+    exclude: ["**/node_modules/**", "**/dist/**", "apps/vscode-extension/src/test/**"],
     coverage: {
       enabled: false,
     },

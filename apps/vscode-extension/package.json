@@ -77,12 +77,16 @@
     },
     "viewsWelcome": [
       {
+        "view": "taskchord.setup",
+        "contents": "Run TaskChord's read-only doctor to check this execution environment.\n[Run Doctor](command:taskchord.runDoctor)"
+      },
+      {
         "view": "taskchord.work",
-        "contents": "Work tracking will be added in a later TaskChord slice."
+        "contents": "GitHub Issue contracts will appear here. GitHub remains the durable work truth."
       },
       {
         "view": "taskchord.proof",
-        "contents": "Proof collection will be added in a later TaskChord slice."
+        "contents": "Changed files, build, tests, commit, PR/CI, and human-decision evidence will appear here."
       }
     ],
     "menus": {
@@ -98,12 +102,12 @@
       {
         "id": "taskchord.gettingStarted",
         "title": "Get started with TaskChord",
-        "description": "Check the environment where TaskChord is running.",
+        "description": "Run TaskChord's read-only checks on demand.",
         "steps": [
           {
             "id": "taskchord.gettingStarted.runDoctor",
             "title": "Check your environment",
-            "description": "Run the read-only environment check.\n[Run Doctor](command:taskchord.runDoctor)",
+            "description": "Check the current execution environment without changing it.\n[Run Doctor](command:taskchord.runDoctor)",
             "media": {
               "markdown": "media/walkthrough.md"
             },

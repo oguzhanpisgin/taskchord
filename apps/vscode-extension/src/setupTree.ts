@@ -1,19 +1,8 @@
-import type { DoctorReport } from "@taskchord/contracts";
+import type { CheckStatus, DoctorReport } from "@taskchord/contracts";
 import * as vscode from "vscode";
+import { toSetupItems } from "./setupModel.js";
 
-function displayName(kind: DoctorReport["environment"]["kind"]): string {
-  const names: Record<DoctorReport["environment"]["kind"], string> = {
-    windows: "Windows",
-    wsl: "WSL",
-    macos: "macOS",
-    linux: "Linux",
-    unknown: "Unknown",
-  };
-
-  return names[kind];
-}
-
-function statusIcon(status: DoctorReport["summary"]["status"]): vscode.ThemeIcon {
+function statusIcon(status: CheckStatus): vscode.ThemeIcon {
   if (status === "ready") {
     return new vscode.ThemeIcon("pass", new vscode.ThemeColor("testing.iconPassed"));
   }
@@ -31,9 +20,9 @@ function statusIcon(status: DoctorReport["summary"]["status"]): vscode.ThemeIcon
 export class SetupTreeDataProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
   readonly #onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.#onDidChangeTreeData.event;
-  #report: DoctorReport;
+  #report: DoctorReport | undefined;
 
-  constructor(report: DoctorReport) {
+  constructor(report?: DoctorReport) {
     this.#report = report;
   }
 
@@ -47,23 +36,13 @@ export class SetupTreeDataProvider implements vscode.TreeDataProvider<vscode.Tre
   }
 
   getChildren(): vscode.ProviderResult<vscode.TreeItem[]> {
-    const environment = this.#report.environment;
-    const item = new vscode.TreeItem(
-      `Environment: ${displayName(environment.kind)}`,
-      vscode.TreeItemCollapsibleState.None,
-    );
-    item.description = environment.architecture;
-    item.iconPath = statusIcon(this.#report.summary.status);
-    item.contextValue = "taskchord.environment";
-    item.tooltip = new vscode.MarkdownString(
-      [
-        `**Status:** ${this.#report.summary.status}`,
-        `**Platform:** ${environment.platform}`,
-        `**Architecture:** ${environment.architecture}`,
-        `**Release:** ${environment.release}`,
-      ].join("  \n"),
-    );
-
-    return [item];
+    return toSetupItems(this.#report).map((model) => {
+      const item = new vscode.TreeItem(model.label, vscode.TreeItemCollapsibleState.None);
+      item.description = model.description;
+      item.iconPath = statusIcon(model.status);
+      item.contextValue = "taskchord.doctorCheck";
+      item.tooltip = model.tooltip;
+      return item;
+    });
   }
 }

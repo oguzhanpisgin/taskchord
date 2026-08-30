@@ -5,6 +5,7 @@ import {
   DOCTOR_SCHEMA_VERSION,
   type DoctorCheck,
   type DoctorReport,
+  type DoctorSummary,
   type EnvironmentFacts,
   type EnvironmentKind,
 } from "@taskchord/contracts";
@@ -56,7 +57,7 @@ export function detectEnvironment(input: EnvironmentDetectionInput): Environment
   return isWsl ? "wsl" : "linux";
 }
 
-function environmentName(kind: EnvironmentKind): string {
+export function environmentDisplayName(kind: EnvironmentKind): string {
   const names: Record<EnvironmentKind, string> = {
     windows: "Windows",
     wsl: "WSL",
@@ -68,17 +69,23 @@ function environmentName(kind: EnvironmentKind): string {
   return names[kind];
 }
 
-function summarize(status: CheckStatus): DoctorReport["summary"] {
+export function summarizeChecks(checks: readonly DoctorCheck[]): DoctorSummary {
+  const ready = checks.filter((check) => check.status === "ready").length;
+  const unverified = checks.filter((check) => check.status === "unverified").length;
+  const failed = checks.filter((check) => check.status === "failed").length;
+  const status: CheckStatus =
+    failed > 0 ? "failed" : unverified > 0 || checks.length === 0 ? "unverified" : "ready";
+
   return {
     status,
-    ready: status === "ready" ? 1 : 0,
-    unverified: status === "unverified" ? 1 : 0,
-    failed: status === "failed" ? 1 : 0,
+    ready,
+    unverified,
+    failed,
   };
 }
 
 function createCheck(environment: EnvironmentFacts, status: CheckStatus): DoctorCheck {
-  const name = environmentName(environment.kind);
+  const name = environmentDisplayName(environment.kind);
 
   return {
     id: "environment",
@@ -96,7 +103,9 @@ function createCheck(environment: EnvironmentFacts, status: CheckStatus): Doctor
   };
 }
 
-export function runDoctor(runtime: DoctorRuntime = systemDoctorRuntime): DoctorReport {
+export async function runDoctor(
+  runtime: DoctorRuntime = systemDoctorRuntime,
+): Promise<DoctorReport> {
   let generatedAt = new Date(0).toISOString();
 
   try {
@@ -122,12 +131,14 @@ export function runDoctor(runtime: DoctorRuntime = systemDoctorRuntime): DoctorR
     };
     const status: CheckStatus = kind === "unknown" ? "unverified" : "ready";
 
+    const checks = [createCheck(environment, status)];
+
     return {
       schemaVersion: DOCTOR_SCHEMA_VERSION,
       generatedAt,
       environment,
-      checks: [createCheck(environment, status)],
-      summary: summarize(status),
+      checks,
+      summary: summarizeChecks(checks),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown environment detection error.";
@@ -138,20 +149,22 @@ export function runDoctor(runtime: DoctorRuntime = systemDoctorRuntime): DoctorR
       release: "unknown",
     };
 
+    const checks: DoctorCheck[] = [
+      {
+        id: "environment",
+        label: "Environment",
+        status: "failed",
+        message: `Environment detection failed: ${message}`,
+        evidence: {},
+      },
+    ];
+
     return {
       schemaVersion: DOCTOR_SCHEMA_VERSION,
       generatedAt,
       environment,
-      checks: [
-        {
-          id: "environment",
-          label: "Environment",
-          status: "failed",
-          message: `Environment detection failed: ${message}`,
-          evidence: {},
-        },
-      ],
-      summary: summarize("failed"),
+      checks,
+      summary: summarizeChecks(checks),
     };
   }
 }

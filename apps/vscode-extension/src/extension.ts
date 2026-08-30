@@ -9,14 +9,14 @@ const emptyTreeDataProvider: vscode.TreeDataProvider<vscode.TreeItem> = {
 };
 
 export function activate(context: vscode.ExtensionContext): void {
-  const setupProvider = new SetupTreeDataProvider(runDoctor());
+  const setupProvider = new SetupTreeDataProvider();
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider("taskchord.setup", setupProvider),
     vscode.window.registerTreeDataProvider("taskchord.work", emptyTreeDataProvider),
     vscode.window.registerTreeDataProvider("taskchord.proof", emptyTreeDataProvider),
-    vscode.commands.registerCommand("taskchord.runDoctor", (): DoctorReport => {
-      const report = runDoctor();
+    vscode.commands.registerCommand("taskchord.runDoctor", async (): Promise<DoctorReport> => {
+      const report = await runDoctor();
       setupProvider.update(report);
       return report;
     }),

@@ -4,6 +4,8 @@ export type EnvironmentKind = "windows" | "wsl" | "macos" | "linux" | "unknown";
 
 export type CheckStatus = "ready" | "unverified" | "failed";
 
+export type DoctorCheckId = string;
+
 export interface EnvironmentFacts {
   kind: EnvironmentKind;
   platform: string;
@@ -12,8 +14,8 @@ export interface EnvironmentFacts {
 }
 
 export interface DoctorCheck {
-  id: "environment";
-  label: "Environment";
+  id: DoctorCheckId;
+  label: string;
   status: CheckStatus;
   message: string;
   evidence: Record<string, string>;
@@ -29,6 +31,7 @@ export interface DoctorSummary {
 export interface DoctorReport {
   schemaVersion: typeof DOCTOR_SCHEMA_VERSION;
   generatedAt: string;
+  /** The execution environment of the TaskChord doctor process. */
   environment: EnvironmentFacts;
   checks: DoctorCheck[];
   summary: DoctorSummary;

@@ -1,4 +1,4 @@
 # TaskChord Doctor
 
-The first TaskChord slice checks only the current operating environment. It does not install
-packages, change files, start processes, or read credentials.
+TaskChord Doctor checks the current execution environment only when you run it. The current
+read-only check does not install packages, change files, start processes, or read credentials.

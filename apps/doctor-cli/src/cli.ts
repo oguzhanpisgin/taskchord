@@ -1,5 +1,5 @@
 import type { DoctorReport } from "@taskchord/contracts";
-import { runDoctor } from "@taskchord/doctor";
+import { environmentDisplayName, runDoctor } from "@taskchord/doctor";
 
 export const CLI_VERSION = "0.0.1";
 
@@ -10,7 +10,7 @@ export interface CliExecution {
   report?: DoctorReport;
 }
 
-export type DoctorRunner = () => DoctorReport;
+export type DoctorRunner = () => Promise<DoctorReport>;
 
 const HELP = `TaskChord ${CLI_VERSION}
 
@@ -20,7 +20,7 @@ Usage:
   taskchord --version
 
 Commands:
-  doctor      Run the read-only environment check.
+  doctor      Run the read-only doctor checks.
 
 Options:
   --json      Print the DoctorReport as JSON.
@@ -30,7 +30,10 @@ Options:
 
 function formatDoctorText(report: DoctorReport): string {
   const status = report.summary.status.toUpperCase();
-  const kind = report.environment.kind === "macos" ? "macOS" : report.environment.kind;
+  const kind = environmentDisplayName(report.environment.kind);
+  const checks = report.checks
+    .map((check) => `- ${check.label}: ${check.status.toUpperCase()}\n  ${check.message}`)
+    .join("\n");
 
   return `TaskChord Doctor
 
@@ -38,7 +41,11 @@ Environment:  ${kind}
 Platform:     ${report.environment.platform}
 Architecture: ${report.environment.architecture}
 Release:      ${report.environment.release}
-Status:       ${status}
+
+Checks:
+${checks}
+
+Summary:      ${status} (${report.summary.ready} ready, ${report.summary.unverified} unverified, ${report.summary.failed} failed)
 `;
 }
 
@@ -46,10 +53,10 @@ function exitCodeFor(report: DoctorReport): 0 | 1 {
   return report.summary.status === "ready" ? 0 : 1;
 }
 
-export function executeCli(
+export async function executeCli(
   args: readonly string[],
   doctor: DoctorRunner = runDoctor,
-): CliExecution {
+): Promise<CliExecution> {
   if (args.length === 0 || args[0] === "--help") {
     return { exitCode: 0, stdout: HELP, stderr: "" };
   }
@@ -80,7 +87,7 @@ export function executeCli(
     };
   }
 
-  const report = doctor();
+  const report = await doctor();
   return {
     exitCode: exitCodeFor(report),
     stdout: options.includes("--json")

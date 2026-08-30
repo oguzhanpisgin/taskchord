@@ -1,9 +1,9 @@
-import type { DoctorReport } from "@taskchord/contracts";
+import { DOCTOR_SCHEMA_VERSION, type DoctorReport } from "@taskchord/contracts";
 import { describe, expect, it } from "vitest";
 import { executeCli } from "./cli.js";
 
 const report: DoctorReport = {
-  schemaVersion: 1,
+  schemaVersion: DOCTOR_SCHEMA_VERSION,
   generatedAt: "2026-08-30T12:00:00.000Z",
   environment: {
     kind: "windows",
@@ -32,37 +32,59 @@ const report: DoctorReport = {
   },
 };
 
+const environmentCheck = report.checks[0];
+if (environmentCheck === undefined) {
+  throw new Error("The CLI fixture must include an environment check.");
+}
+
 describe("executeCli", () => {
-  it("prints help when invoked without arguments", () => {
-    const result = executeCli([]);
+  it("prints help when invoked without arguments", async () => {
+    const result = await executeCli([]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("taskchord doctor [--json]");
   });
 
-  it("prints text and JSON from the same DoctorReport", () => {
-    const doctor = () => report;
-    const text = executeCli(["doctor"], doctor);
-    const json = executeCli(["doctor", "--json"], doctor);
+  it("prints every check in text and the same DoctorReport as JSON", async () => {
+    const multiCheckReport: DoctorReport = {
+      ...report,
+      checks: [
+        ...report.checks,
+        {
+          id: "node",
+          label: "Node.js",
+          status: "ready",
+          message: "Detected Node.js.",
+          evidence: { version: "24.19.0" },
+        },
+      ],
+      summary: { status: "ready", ready: 2, unverified: 0, failed: 0 },
+    };
+    const doctor = async () => multiCheckReport;
+    const text = await executeCli(["doctor"], doctor);
+    const json = await executeCli(["doctor", "--json"], doctor);
 
-    expect(text.report).toBe(report);
-    expect(json.report).toBe(report);
-    expect(text.stdout).toContain("Environment:  windows");
-    expect(JSON.parse(json.stdout)).toEqual(report);
+    expect(text.report).toBe(multiCheckReport);
+    expect(json.report).toBe(multiCheckReport);
+    expect(text.stdout).toContain("Environment:  Windows");
+    expect(text.stdout).toContain("- Environment: READY");
+    expect(text.stdout).toContain("- Node.js: READY");
+    expect(JSON.parse(json.stdout)).toEqual(multiCheckReport);
   });
 
-  it("returns exit code 1 for an unverified report", () => {
-    const result = executeCli(["doctor"], () => ({
+  it("returns exit code 1 for an unverified report", async () => {
+    const result = await executeCli(["doctor"], async () => ({
       ...report,
       environment: { ...report.environment, kind: "unknown" },
+      checks: [{ ...environmentCheck, status: "unverified" }],
       summary: { status: "unverified", ready: 0, unverified: 1, failed: 0 },
     }));
 
     expect(result.exitCode).toBe(1);
   });
 
-  it("returns exit code 1 for a detection failure", () => {
-    const result = executeCli(["doctor"], () => ({
+  it("returns exit code 1 for a detection failure", async () => {
+    const result = await executeCli(["doctor"], async () => ({
       ...report,
       environment: {
         kind: "unknown",
@@ -85,8 +107,8 @@ describe("executeCli", () => {
     expect(result.exitCode).toBe(1);
   });
 
-  it("returns exit code 2 for an invalid option", () => {
-    const result = executeCli(["doctor", "--write"], () => report);
+  it("returns exit code 2 for an invalid option", async () => {
+    const result = await executeCli(["doctor", "--write"], async () => report);
 
     expect(result.exitCode).toBe(2);
     expect(result.stderr).toContain("Unknown option");

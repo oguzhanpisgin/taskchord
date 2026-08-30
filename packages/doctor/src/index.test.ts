@@ -1,5 +1,6 @@
+import { DOCTOR_SCHEMA_VERSION, type DoctorCheck } from "@taskchord/contracts";
 import { describe, expect, it } from "vitest";
-import { type DoctorRuntime, detectEnvironment, runDoctor } from "./index.js";
+import { type DoctorRuntime, detectEnvironment, runDoctor, summarizeChecks } from "./index.js";
 
 const fixedDate = new Date("2026-08-30T12:00:00.000Z");
 
@@ -46,11 +47,11 @@ describe("detectEnvironment", () => {
 });
 
 describe("runDoctor", () => {
-  it("returns a ready report for a recognized environment", () => {
-    const report = runDoctor(runtime());
+  it("returns a ready report for a recognized environment", async () => {
+    const report = await runDoctor(runtime());
 
     expect(report).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: DOCTOR_SCHEMA_VERSION,
       generatedAt: fixedDate.toISOString(),
       environment: {
         kind: "windows",
@@ -66,15 +67,15 @@ describe("runDoctor", () => {
     });
   });
 
-  it("returns unverified for an unknown platform", () => {
-    const report = runDoctor(runtime({ platform: () => "aix" }));
+  it("returns unverified for an unknown platform", async () => {
+    const report = await runDoctor(runtime({ platform: () => "aix" }));
 
     expect(report.environment.kind).toBe("unknown");
     expect(report.summary.status).toBe("unverified");
   });
 
-  it("turns a detection exception into a structured failed report", () => {
-    const report = runDoctor(
+  it("turns a detection exception into a structured failed report", async () => {
+    const report = await runDoctor(
       runtime({
         release: () => {
           throw new Error("release unavailable");
@@ -84,5 +85,53 @@ describe("runDoctor", () => {
 
     expect(report.summary.status).toBe("failed");
     expect(report.checks[0]?.message).toContain("release unavailable");
+  });
+});
+
+function check(id: string, status: DoctorCheck["status"]): DoctorCheck {
+  return {
+    id,
+    label: id,
+    status,
+    message: `${id} is ${status}`,
+    evidence: {},
+  };
+}
+
+describe("summarizeChecks", () => {
+  it("counts every check and remains ready only when all checks are ready", () => {
+    expect(summarizeChecks([check("environment", "ready"), check("node", "ready")])).toEqual({
+      status: "ready",
+      ready: 2,
+      unverified: 0,
+      failed: 0,
+    });
+  });
+
+  it("uses unverified when any check is unverified and none failed", () => {
+    expect(summarizeChecks([check("environment", "ready"), check("node", "unverified")])).toEqual({
+      status: "unverified",
+      ready: 1,
+      unverified: 1,
+      failed: 0,
+    });
+  });
+
+  it("gives failed precedence over every other status", () => {
+    expect(summarizeChecks([check("environment", "unverified"), check("node", "failed")])).toEqual({
+      status: "failed",
+      ready: 0,
+      unverified: 1,
+      failed: 1,
+    });
+  });
+
+  it("does not report an empty check set as ready", () => {
+    expect(summarizeChecks([])).toEqual({
+      status: "unverified",
+      ready: 0,
+      unverified: 0,
+      failed: 0,
+    });
   });
 });
