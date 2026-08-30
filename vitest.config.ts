@@ -10,6 +10,10 @@ export default defineConfig({
       "@taskchord/doctor": fileURLToPath(
         new URL("./packages/doctor/src/index.ts", import.meta.url),
       ),
+      "@taskchord/github": fileURLToPath(
+        new URL("./packages/github/src/index.ts", import.meta.url),
+      ),
+      "@taskchord/work": fileURLToPath(new URL("./packages/work/src/index.ts", import.meta.url)),
     },
   },
   test: {

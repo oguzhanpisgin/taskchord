@@ -11,7 +11,7 @@ try {
     version: "1.134.0",
     extensionDevelopmentPath,
     extensionTestsPath,
-    launchArgs: ["--disable-extensions"],
+    launchArgs: [extensionDevelopmentPath, "--disable-extensions", "--disable-workspace-trust"],
   });
 } catch (error) {
   console.error("TaskChord extension integration tests failed.", error);

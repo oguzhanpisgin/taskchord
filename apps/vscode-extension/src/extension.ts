@@ -2,6 +2,7 @@ import type { DoctorReport } from "@taskchord/contracts";
 import { deniedProcessProbe, runDoctor } from "@taskchord/doctor";
 import * as vscode from "vscode";
 import { SetupTreeDataProvider } from "./setupTree.js";
+import { WorkController } from "./workController.js";
 
 const emptyTreeDataProvider: vscode.TreeDataProvider<vscode.TreeItem> = {
   getTreeItem: (item) => item,
@@ -10,11 +11,14 @@ const emptyTreeDataProvider: vscode.TreeDataProvider<vscode.TreeItem> = {
 
 export function activate(context: vscode.ExtensionContext): void {
   const setupProvider = new SetupTreeDataProvider();
+  const workController = new WorkController(context);
 
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider("taskchord.setup", setupProvider),
-    vscode.window.registerTreeDataProvider("taskchord.work", emptyTreeDataProvider),
+    vscode.window.registerTreeDataProvider("taskchord.work", workController.provider),
     vscode.window.registerTreeDataProvider("taskchord.proof", emptyTreeDataProvider),
+    workController,
+    ...workController.registerCommands(),
     vscode.commands.registerCommand("taskchord.runDoctor", async (): Promise<DoctorReport> => {
       const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       const report = await runDoctor({
