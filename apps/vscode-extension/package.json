@@ -20,7 +20,8 @@
   ],
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": true
+      "supported": "limited",
+      "description": "TaskChord Doctor remains available. GitHub-backed Work commands are disabled until the workspace is trusted."
     }
   },
   "files": [
@@ -35,7 +36,9 @@
   },
   "dependencies": {
     "@taskchord/contracts": "workspace:*",
-    "@taskchord/doctor": "workspace:*"
+    "@taskchord/doctor": "workspace:*",
+    "@taskchord/github": "workspace:*",
+    "@taskchord/work": "workspace:*"
   },
   "devDependencies": {
     "@types/vscode": "1.134.0",
@@ -48,6 +51,42 @@
         "title": "Run Doctor",
         "category": "TaskChord",
         "icon": "$(pulse)"
+      },
+      {
+        "command": "taskchord.work.refresh",
+        "title": "Refresh Issues",
+        "category": "TaskChord",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "taskchord.work.selectRepository",
+        "title": "Select Repository",
+        "category": "TaskChord",
+        "icon": "$(repo)"
+      },
+      {
+        "command": "taskchord.work.newContract",
+        "title": "New Issue Contract",
+        "category": "TaskChord",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "taskchord.work.editContract",
+        "title": "Edit Issue Contract",
+        "category": "TaskChord",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "taskchord.work.previewAndSubmit",
+        "title": "Preview Issue Contract",
+        "category": "TaskChord",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "taskchord.work.openOnGitHub",
+        "title": "Open on GitHub",
+        "category": "TaskChord",
+        "icon": "$(link-external)"
       }
     ],
     "viewsContainers": {
@@ -82,7 +121,18 @@
       },
       {
         "view": "taskchord.work",
-        "contents": "GitHub Issue contracts will appear here. GitHub remains the durable work truth."
+        "contents": "Load all open GitHub Issues for the selected repository.\n[Refresh Issues](command:taskchord.work.refresh)\n[New Issue Contract](command:taskchord.work.newContract)",
+        "when": "taskchord.workState == idle"
+      },
+      {
+        "view": "taskchord.work",
+        "contents": "Trust this workspace to use GitHub-backed Work commands. Doctor remains available.",
+        "when": "taskchord.workState == untrusted"
+      },
+      {
+        "view": "taskchord.work",
+        "contents": "Choose which workspace repository TaskChord should use.\n[Select Repository](command:taskchord.work.selectRepository)",
+        "when": "taskchord.workState == selectRepository"
       },
       {
         "view": "taskchord.proof",
@@ -95,6 +145,66 @@
           "command": "taskchord.runDoctor",
           "when": "view == taskchord.setup",
           "group": "navigation"
+        },
+        {
+          "command": "taskchord.work.refresh",
+          "when": "view == taskchord.work && isWorkspaceTrusted",
+          "group": "navigation@1"
+        },
+        {
+          "command": "taskchord.work.newContract",
+          "when": "view == taskchord.work && isWorkspaceTrusted",
+          "group": "navigation@2"
+        },
+        {
+          "command": "taskchord.work.selectRepository",
+          "when": "view == taskchord.work && isWorkspaceTrusted",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "taskchord.work.editContract",
+          "when": "view == taskchord.work && viewItem == taskchord.contractIssue && isWorkspaceTrusted",
+          "group": "inline@1"
+        },
+        {
+          "command": "taskchord.work.openOnGitHub",
+          "when": "view == taskchord.work && (viewItem == taskchord.contractIssue || viewItem == taskchord.readOnlyIssue) && isWorkspaceTrusted",
+          "group": "inline@2"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "taskchord.work.previewAndSubmit",
+          "when": "taskchord.isContractDraft && isWorkspaceTrusted",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "taskchord.work.refresh",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "taskchord.work.selectRepository",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "taskchord.work.newContract",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "taskchord.work.editContract",
+          "when": "false"
+        },
+        {
+          "command": "taskchord.work.previewAndSubmit",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "taskchord.work.openOnGitHub",
+          "when": "false"
         }
       ]
     },

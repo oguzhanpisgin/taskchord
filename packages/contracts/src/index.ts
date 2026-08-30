@@ -50,3 +50,93 @@ export interface DoctorReport {
   checks: DoctorCheck[];
   summary: DoctorSummary;
 }
+
+export const ISSUE_CONTRACT_VERSION = 1 as const;
+
+export type ContractField =
+  | "title"
+  | "outcome"
+  | "boundaries"
+  | "acceptance"
+  | "verification"
+  | "goal";
+
+export interface IssueContract {
+  id: string;
+  outcome: string;
+  boundaries: string;
+  acceptance: string;
+  verification: string;
+  goal: string;
+  prefix: string;
+  suffix: string;
+}
+
+export type ParsedIssueBody =
+  | { kind: "contract"; version: typeof ISSUE_CONTRACT_VERSION; contract: IssueContract }
+  | { kind: "contract-newer"; version: number }
+  | { kind: "unstructured" };
+
+export interface RepositoryRef {
+  workspaceFolderUri: string;
+  workspacePath: string;
+  nameWithOwner: string;
+  url: string;
+  hasIssuesEnabled: boolean;
+  isArchived: boolean;
+  canWrite: boolean;
+}
+
+export interface RemoteIssue {
+  number: number;
+  title: string;
+  body: string;
+  url: string;
+  updatedAt: string;
+  authorLogin: string;
+}
+
+export interface WorkItem {
+  repository: RepositoryRef;
+  issue: RemoteIssue;
+  parsedBody: ParsedIssueBody;
+}
+
+export interface ScaffoldFinding {
+  field: ContractField;
+  severity: "required" | "recommended";
+  message: string;
+  example: string;
+}
+
+export interface ActiveGoal {
+  repository: string;
+  issueNumber: number;
+  issueTitle: string;
+  issueUrl: string;
+  contractId: string;
+  goal: string;
+  setAt: string;
+}
+
+export type GhFailureKind =
+  | "denied"
+  | "missing"
+  | "unauthenticated"
+  | "timeout"
+  | "forbidden"
+  | "not-found"
+  | "issues-disabled"
+  | "archived"
+  | "read-only"
+  | "invalid-output"
+  | "ambiguous"
+  | "error";
+
+export interface GhFailure {
+  kind: GhFailureKind;
+  detail: string;
+  nextAction: string;
+}
+
+export type GhResult<T> = { ok: true; value: T } | { ok: false; failure: GhFailure };

@@ -44,6 +44,12 @@ importers:
       '@taskchord/doctor':
         specifier: workspace:*
         version: link:../../packages/doctor
+      '@taskchord/github':
+        specifier: workspace:*
+        version: link:../../packages/github
+      '@taskchord/work':
+        specifier: workspace:*
+        version: link:../../packages/work
     devDependencies:
       '@types/vscode':
         specifier: 1.134.0
@@ -55,6 +61,21 @@ importers:
   packages/contracts: {}
 
   packages/doctor:
+    dependencies:
+      '@taskchord/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/github:
+    dependencies:
+      '@taskchord/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@taskchord/doctor':
+        specifier: workspace:*
+        version: link:../doctor
+
+  packages/work:
     dependencies:
       '@taskchord/contracts':
         specifier: workspace:*
