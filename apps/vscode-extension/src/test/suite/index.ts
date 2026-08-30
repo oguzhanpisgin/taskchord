@@ -66,6 +66,9 @@ export async function run(): Promise<void> {
     "taskchord.work.setActiveGoal",
     "taskchord.work.clearActiveGoal",
     "taskchord.work.copyCodexHandoff",
+    "taskchord.proof.refresh",
+    "taskchord.proof.selectRepository",
+    "taskchord.proof.openDetails",
   ]) {
     assert.ok(commands.includes(command), `${command} must be registered.`);
   }

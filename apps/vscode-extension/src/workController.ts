@@ -21,11 +21,11 @@ import {
 import * as vscode from "vscode";
 import { type DraftMetadata, DraftStore } from "./draftStore.js";
 import { PreviewDocumentProvider } from "./previewProvider.js";
+import { RepositorySelectionStore } from "./repositorySelection.js";
 import type { WorkTreeModel } from "./workModel.js";
 import { WorkTreeDataProvider } from "./workTree.js";
 import { canUseWork } from "./workTrust.js";
 
-const SELECTED_REPOSITORY_KEY = "taskchord.selectedRepositoryFolder.v1";
 const ACTIVE_GOAL_KEY = "taskchord.activeGoal.v1";
 
 function failureMessage(error: unknown): string {
@@ -66,7 +66,8 @@ export class WorkController implements vscode.Disposable {
   readonly #context: vscode.ExtensionContext;
   readonly #github: GitHubClient;
   readonly #drafts: DraftStore;
-  readonly #previews = new PreviewDocumentProvider();
+  readonly #previews: PreviewDocumentProvider;
+  readonly #repositories: RepositorySelectionStore;
   readonly #diagnostics = vscode.languages.createDiagnosticCollection("taskchord-intent-scaffold");
   readonly #goalStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   readonly #disposables: vscode.Disposable[] = [];
@@ -74,15 +75,18 @@ export class WorkController implements vscode.Disposable {
   constructor(
     context: vscode.ExtensionContext,
     github: GitHubClient = createGitHubClient(nodeProcessProbe),
+    previews: PreviewDocumentProvider = new PreviewDocumentProvider(),
+    repositories: RepositorySelectionStore = new RepositorySelectionStore(context),
   ) {
     this.#context = context;
     this.#github = github;
+    this.#previews = previews;
+    this.#repositories = repositories;
     this.#drafts = new DraftStore(context);
     this.#goalStatus.name = "TaskChord Active Goal";
     this.#goalStatus.command = "taskchord.work.copyCodexHandoff";
 
     this.#disposables.push(
-      vscode.workspace.registerTextDocumentContentProvider("taskchord-preview", this.#previews),
       this.#diagnostics,
       this.#goalStatus,
       vscode.workspace.onDidChangeTextDocument(({ document }) => this.#updateDiagnostics(document)),
@@ -172,19 +176,7 @@ export class WorkController implements vscode.Disposable {
     if (!this.#ensureTrusted()) {
       return;
     }
-    const folders = vscode.workspace.workspaceFolders ?? [];
-    const selected = await vscode.window.showQuickPick(
-      folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath, folder })),
-      { title: "Select the GitHub repository TaskChord should use" },
-    );
-    if (selected === undefined) {
-      return;
-    }
-    await this.#context.workspaceState.update(
-      SELECTED_REPOSITORY_KEY,
-      selected.folder.uri.toString(),
-    );
-    await this.refresh();
+    if (await this.#repositories.select()) await this.refresh();
   }
 
   async newContract(): Promise<vscode.Uri | undefined> {
@@ -569,27 +561,17 @@ export class WorkController implements vscode.Disposable {
   }
 
   async #repository(): Promise<RepositoryRef | undefined> {
-    const folders = vscode.workspace.workspaceFolders ?? [];
-    if (folders.length === 0) {
-      this.#showFailure("No workspace folder is open.", "Open a Git repository, then retry.");
-      return undefined;
-    }
-    const stored = this.#context.workspaceState.get<string>(SELECTED_REPOSITORY_KEY);
-    const folder =
-      folders.length === 1
-        ? folders[0]
-        : folders.find((candidate) => candidate.uri.toString() === stored);
-    if (folder === undefined) {
+    const result = await this.#repositories.resolve(this.#github);
+    if (!result.ok && result.kind === "selection-required") {
       this.provider.update({ kind: "select-repository" });
       await vscode.commands.executeCommand("setContext", "taskchord.workState", "selectRepository");
       return undefined;
     }
-    const result = await this.#github.resolveRepository(folder.uri.toString(), folder.uri.fsPath);
     if (!result.ok) {
-      this.#showFailure(result.failure.detail, result.failure.nextAction);
+      this.#showFailure(result.message, result.nextAction);
       return undefined;
     }
-    return result.value;
+    return result.repository;
   }
 
   #showFailure(message: string, nextAction: string): void {

@@ -47,6 +47,9 @@ importers:
       '@taskchord/github':
         specifier: workspace:*
         version: link:../../packages/github
+      '@taskchord/proof':
+        specifier: workspace:*
+        version: link:../../packages/proof
       '@taskchord/work':
         specifier: workspace:*
         version: link:../../packages/work
@@ -71,6 +74,12 @@ importers:
       '@taskchord/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@taskchord/doctor':
+        specifier: workspace:*
+        version: link:../doctor
+
+  packages/proof:
+    dependencies:
       '@taskchord/doctor':
         specifier: workspace:*
         version: link:../doctor

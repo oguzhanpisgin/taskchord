@@ -21,7 +21,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "TaskChord Doctor remains available. GitHub-backed Work commands are disabled until the workspace is trusted."
+      "description": "TaskChord Doctor remains available. GitHub-backed Work and Proof commands are disabled until the workspace is trusted."
     }
   },
   "files": [
@@ -38,6 +38,7 @@
     "@taskchord/contracts": "workspace:*",
     "@taskchord/doctor": "workspace:*",
     "@taskchord/github": "workspace:*",
+    "@taskchord/proof": "workspace:*",
     "@taskchord/work": "workspace:*"
   },
   "devDependencies": {
@@ -105,6 +106,24 @@
         "title": "Preview and Copy Codex Handoff",
         "category": "TaskChord",
         "icon": "$(copy)"
+      },
+      {
+        "command": "taskchord.proof.refresh",
+        "title": "Refresh Proof",
+        "category": "TaskChord",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "taskchord.proof.selectRepository",
+        "title": "Select Proof Repository",
+        "category": "TaskChord",
+        "icon": "$(repo)"
+      },
+      {
+        "command": "taskchord.proof.openDetails",
+        "title": "Open Proof Details",
+        "category": "TaskChord",
+        "icon": "$(open-preview)"
       }
     ],
     "viewsContainers": {
@@ -154,7 +173,18 @@
       },
       {
         "view": "taskchord.proof",
-        "contents": "Changed files, build, tests, commit, PR/CI, and human-decision evidence will appear here."
+        "contents": "Collect changed files, build, tests, commit, PR/CI, and human-decision evidence on demand.\n[Refresh Proof](command:taskchord.proof.refresh)",
+        "when": "taskchord.proofState == idle"
+      },
+      {
+        "view": "taskchord.proof",
+        "contents": "Trust this workspace to collect read-only Proof evidence.",
+        "when": "taskchord.proofState == untrusted"
+      },
+      {
+        "view": "taskchord.proof",
+        "contents": "Choose which workspace repository TaskChord should inspect.\n[Select Repository](command:taskchord.proof.selectRepository)",
+        "when": "taskchord.proofState == selectRepository"
       }
     ],
     "menus": {
@@ -183,6 +213,21 @@
           "command": "taskchord.work.clearActiveGoal",
           "when": "view == taskchord.work && isWorkspaceTrusted && taskchord.hasActiveGoal",
           "group": "navigation@4"
+        },
+        {
+          "command": "taskchord.proof.refresh",
+          "when": "view == taskchord.proof && isWorkspaceTrusted",
+          "group": "navigation@1"
+        },
+        {
+          "command": "taskchord.proof.openDetails",
+          "when": "view == taskchord.proof && isWorkspaceTrusted && taskchord.proofState == ready",
+          "group": "navigation@2"
+        },
+        {
+          "command": "taskchord.proof.selectRepository",
+          "when": "view == taskchord.proof && isWorkspaceTrusted",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -205,6 +250,11 @@
           "command": "taskchord.work.copyCodexHandoff",
           "when": "view == taskchord.work && viewItem == taskchord.contractIssue && isWorkspaceTrusted && taskchord.hasActiveGoal",
           "group": "taskchord@2"
+        },
+        {
+          "command": "taskchord.proof.openDetails",
+          "when": "view == taskchord.proof && viewItem == taskchord.proofStrip && isWorkspaceTrusted",
+          "group": "inline@1"
         }
       ],
       "editor/title": [
@@ -250,6 +300,18 @@
         {
           "command": "taskchord.work.copyCodexHandoff",
           "when": "isWorkspaceTrusted && taskchord.hasActiveGoal"
+        },
+        {
+          "command": "taskchord.proof.refresh",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "taskchord.proof.selectRepository",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "taskchord.proof.openDetails",
+          "when": "isWorkspaceTrusted && taskchord.proofState == ready"
         }
       ]
     },
