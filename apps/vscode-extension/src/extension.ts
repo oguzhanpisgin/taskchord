@@ -1,14 +1,14 @@
-import type { DoctorReport } from "@taskchord/contracts";
-import { deniedProcessProbe, runDoctor } from "@taskchord/doctor";
 import * as vscode from "vscode";
 import { PreviewDocumentProvider } from "./previewProvider.js";
 import { ProofController } from "./proofController.js";
 import { RepositorySelectionStore } from "./repositorySelection.js";
+import { SetupController } from "./setupController.js";
 import { SetupTreeDataProvider } from "./setupTree.js";
 import { WorkController } from "./workController.js";
 
 export function activate(context: vscode.ExtensionContext): void {
   const setupProvider = new SetupTreeDataProvider();
+  const setupController = new SetupController(setupProvider);
   const previews = new PreviewDocumentProvider();
   const repositories = new RepositorySelectionStore(context);
   const workController = new WorkController(context, undefined, previews, repositories);
@@ -21,17 +21,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerTreeDataProvider("taskchord.proof", proofController.provider),
     workController,
     proofController,
+    ...setupController.registerCommands(),
     ...workController.registerCommands(),
     ...proofController.registerCommands(),
-    vscode.commands.registerCommand("taskchord.runDoctor", async (): Promise<DoctorReport> => {
-      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      const report = await runDoctor({
-        ...(vscode.workspace.isTrusted ? {} : { probe: deniedProcessProbe }),
-        ...(vscode.workspace.isTrusted && workspaceRoot !== undefined ? { workspaceRoot } : {}),
-      });
-      setupProvider.update(report);
-      return report;
-    }),
   );
 }
 

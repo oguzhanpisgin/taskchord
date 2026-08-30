@@ -39,6 +39,7 @@
     "@taskchord/doctor": "workspace:*",
     "@taskchord/github": "workspace:*",
     "@taskchord/proof": "workspace:*",
+    "@taskchord/runners": "workspace:*",
     "@taskchord/work": "workspace:*"
   },
   "devDependencies": {
@@ -52,6 +53,18 @@
         "title": "Run Doctor",
         "category": "TaskChord",
         "icon": "$(pulse)"
+      },
+      {
+        "command": "taskchord.runners.refresh",
+        "title": "Refresh Runner Status",
+        "category": "TaskChord",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "taskchord.runners.openSettings",
+        "title": "Open Runner Settings",
+        "category": "TaskChord",
+        "icon": "$(settings-gear)"
       },
       {
         "command": "taskchord.work.refresh",
@@ -217,12 +230,41 @@
         "when": "taskchord.proofState == selectRepository"
       }
     ],
+    "configuration": {
+      "title": "TaskChord",
+      "properties": {
+        "taskchord.runners.symphony.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "machine-overridable",
+          "description": "Allow TaskChord to check the local Symphony preview state endpoint when you explicitly refresh runner status."
+        },
+        "taskchord.runners.symphony.port": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 1,
+          "maximum": 65535,
+          "scope": "machine-overridable",
+          "description": "Local Symphony preview state port. TaskChord always uses http://127.0.0.1:<port>/api/v1/state."
+        }
+      }
+    },
     "menus": {
       "view/title": [
         {
           "command": "taskchord.runDoctor",
           "when": "view == taskchord.setup",
           "group": "navigation"
+        },
+        {
+          "command": "taskchord.runners.refresh",
+          "when": "view == taskchord.setup && isWorkspaceTrusted",
+          "group": "navigation@1"
+        },
+        {
+          "command": "taskchord.runners.openSettings",
+          "when": "view == taskchord.setup && isWorkspaceTrusted",
+          "group": "navigation@2"
         },
         {
           "command": "taskchord.work.refresh",
@@ -320,6 +362,14 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "taskchord.runners.refresh",
+          "when": "isWorkspaceTrusted"
+        },
+        {
+          "command": "taskchord.runners.openSettings",
+          "when": "isWorkspaceTrusted"
+        },
         {
           "command": "taskchord.work.refresh",
           "when": "isWorkspaceTrusted"

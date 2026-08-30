@@ -19,6 +19,8 @@ async function runUntrustedHandlerSmoke(): Promise<void> {
   });
   try {
     for (const command of [
+      "taskchord.runners.refresh",
+      "taskchord.runners.openSettings",
       "taskchord.proof.runBuild",
       "taskchord.proof.runTests",
       "taskchord.proof.accept",
@@ -167,9 +169,24 @@ export async function run(): Promise<void> {
     visibleProofMenus.every((entry) => entry.when?.includes("isWorkspaceTrusted")),
     "Every visible Proof menu entry must be hidden in untrusted workspaces.",
   );
+  const visibleRunnerMenus = Object.values(menuGroups ?? {})
+    .flat()
+    .filter((entry) => entry.command.startsWith("taskchord.runners.") && entry.when !== "false");
+  assert.ok(
+    visibleRunnerMenus.every((entry) => entry.when?.includes("isWorkspaceTrusted")),
+    "Every visible optional-runner menu entry must be hidden in untrusted workspaces.",
+  );
 
   const commands = await vscode.commands.getCommands(true);
   assert.ok(commands.includes("taskchord.runDoctor"), "Run Doctor command must be registered.");
+  assert.ok(
+    commands.includes("taskchord.runners.refresh"),
+    "Refresh Runner Status command must be registered.",
+  );
+  assert.ok(
+    commands.includes("taskchord.runners.openSettings"),
+    "Open Runner Settings command must be registered.",
+  );
   for (const command of [
     "taskchord.work.refresh",
     "taskchord.work.selectRepository",
