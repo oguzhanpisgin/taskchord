@@ -3,6 +3,7 @@ import type { ProofReport, ProofStrip } from "@taskchord/proof";
 export type ProofState =
   | { kind: "idle" }
   | { kind: "loading" }
+  | { kind: "running"; report: ProofReport; verification: "build" | "tests" }
   | { kind: "untrusted" }
   | { kind: "select-repository" }
   | { kind: "error"; message: string; nextAction: string }
@@ -29,6 +30,14 @@ export function toProofTreeModels(state: ProofState): ProofTreeModel[] {
       return [];
     case "loading":
       return [{ kind: "message", label: "Collecting read-only proof…", icon: "loading~spin" }];
+    case "running": {
+      const models = toProofTreeModels({ kind: "ready", report: state.report });
+      const label = state.verification === "build" ? "Build" : "Tests";
+      return [
+        { kind: "message", label: `Running ${label} verification…`, icon: "loading~spin" },
+        ...models,
+      ];
+    }
     case "untrusted":
       return [{ kind: "message", label: "Trust this workspace to collect Proof.", icon: "shield" }];
     case "select-repository":
@@ -43,9 +52,17 @@ export function toProofTreeModels(state: ProofState): ProofTreeModel[] {
         {
           kind: "summary",
           label:
-            report.technicalReadiness === "ready-for-human-review"
-              ? "Ready for human review"
-              : "Not ready for human review",
+            report.humanDecision.decision === "accepted"
+              ? report.unresolvedTechnicalStrips.length === 0
+                ? "Accepted"
+                : "Accepted — unresolved proof exists"
+              : report.humanDecision.decision === "changes-requested"
+                ? "Changes requested"
+                : report.humanDecision.decision === "stale"
+                  ? "Human decision is stale"
+                  : report.technicalReadiness === "ready-for-human-review"
+                    ? "Ready for human review"
+                    : "Not ready for human review",
           description: `Human: ${report.humanDecision.decision}`,
           icon:
             report.technicalReadiness === "ready-for-human-review" ? "verified-filled" : "warning",

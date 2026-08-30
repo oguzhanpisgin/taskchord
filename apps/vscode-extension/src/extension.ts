@@ -12,7 +12,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const previews = new PreviewDocumentProvider();
   const repositories = new RepositorySelectionStore(context);
   const workController = new WorkController(context, undefined, previews, repositories);
-  const proofController = ProofController.create(previews, repositories);
+  const proofController = ProofController.create(context, previews, repositories);
 
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider("taskchord-preview", previews),

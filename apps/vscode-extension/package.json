@@ -124,6 +124,36 @@
         "title": "Open Proof Details",
         "category": "TaskChord",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "taskchord.proof.runBuild",
+        "title": "Run Proof Build",
+        "category": "TaskChord",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "taskchord.proof.runTests",
+        "title": "Run Proof Tests",
+        "category": "TaskChord",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "taskchord.proof.accept",
+        "title": "Accept Proof",
+        "category": "TaskChord",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "taskchord.proof.requestChanges",
+        "title": "Request Proof Changes",
+        "category": "TaskChord",
+        "icon": "$(request-changes)"
+      },
+      {
+        "command": "taskchord.proof.clearDecision",
+        "title": "Clear Proof Decision",
+        "category": "TaskChord",
+        "icon": "$(discard)"
       }
     ],
     "viewsContainers": {
@@ -228,6 +258,31 @@
           "command": "taskchord.proof.selectRepository",
           "when": "view == taskchord.proof && isWorkspaceTrusted",
           "group": "navigation@3"
+        },
+        {
+          "command": "taskchord.proof.runBuild",
+          "when": "view == taskchord.proof && isWorkspaceTrusted && taskchord.proofState == ready",
+          "group": "navigation@4"
+        },
+        {
+          "command": "taskchord.proof.runTests",
+          "when": "view == taskchord.proof && isWorkspaceTrusted && taskchord.proofState == ready",
+          "group": "navigation@5"
+        },
+        {
+          "command": "taskchord.proof.accept",
+          "when": "view == taskchord.proof && isWorkspaceTrusted && taskchord.proofState == ready",
+          "group": "navigation@6"
+        },
+        {
+          "command": "taskchord.proof.requestChanges",
+          "when": "view == taskchord.proof && isWorkspaceTrusted && taskchord.proofState == ready",
+          "group": "navigation@7"
+        },
+        {
+          "command": "taskchord.proof.clearDecision",
+          "when": "view == taskchord.proof && isWorkspaceTrusted && taskchord.proofState == ready",
+          "group": "navigation@8"
         }
       ],
       "view/item/context": [
@@ -311,6 +366,26 @@
         },
         {
           "command": "taskchord.proof.openDetails",
+          "when": "isWorkspaceTrusted && taskchord.proofState == ready"
+        },
+        {
+          "command": "taskchord.proof.runBuild",
+          "when": "isWorkspaceTrusted && taskchord.proofState == ready"
+        },
+        {
+          "command": "taskchord.proof.runTests",
+          "when": "isWorkspaceTrusted && taskchord.proofState == ready"
+        },
+        {
+          "command": "taskchord.proof.accept",
+          "when": "isWorkspaceTrusted && taskchord.proofState == ready"
+        },
+        {
+          "command": "taskchord.proof.requestChanges",
+          "when": "isWorkspaceTrusted && taskchord.proofState == ready"
+        },
+        {
+          "command": "taskchord.proof.clearDecision",
           "when": "isWorkspaceTrusted && taskchord.proofState == ready"
         }
       ]

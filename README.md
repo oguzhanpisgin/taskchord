@@ -12,7 +12,9 @@ Slice 001 was implemented at commit `3e1a2c7` and then realigned with the curren
 
 Slice 003 provides the native Issue Contract Workbench: on-demand open-Issue listing, extension-storage Markdown drafts, deterministic Intent Scaffold diagnostics, exact write previews, separately approved `gh` create/edit operations, conflict and ambiguous-create safeguards, a local Active Goal projection, and preview-approved clipboard handoff. TaskChord never reads or stores a GitHub token and does not start Codex. Issue #5 on `oguzhanpisgin/taskchord` has passed live GitHub acceptance: exact create readback, exact edit readback, closed as `completed` without comments/metadata changes, with no repository worktree changes left behind.
 
-The next not-yet-implemented candidate is **Slice 004 — Deterministic Proof**.
+Slice 004 provides deterministic Proof for changed files, approved Build and Test package-script runs, commit identity, PR/CI state, and an explicit local Human decision. Each strip remains independently visible; verification runs require an exact native Markdown preview and separate confirmation, and stored evidence becomes stale when its script definition or workspace fingerprint changes. Proof does not fetch, write to GitHub, or run free-form commands.
+
+The next not-yet-implemented candidate is **Slice 005 — Optional runners**.
 
 ## Development
 

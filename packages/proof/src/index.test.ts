@@ -1,14 +1,19 @@
 import type { ProbeRequest, ProbeResult, ProcessProbe } from "@taskchord/doctor";
 import { describe, expect, it } from "vitest";
 import {
+  applyProofEvidence,
   collectGitProof,
   compareCommitRelation,
+  createHumanDecision,
   createPassiveProofReport,
+  discoverVerificationScripts,
   type GitProofEvidence,
   type PullRequestInput,
   parseNameStatus,
   parsePorcelainV2,
   renderProofMarkdown,
+  renderVerificationPreview,
+  type VerificationRunRecord,
 } from "./index.js";
 
 const SHA = "0123456789abcdef0123456789abcdef01234567";
@@ -110,6 +115,155 @@ describe("passive Proof report", () => {
     ]) {
       expect(markdown).toContain(`## ${heading}`);
     }
+  });
+});
+
+describe("approved verification evidence", () => {
+  const manifest = JSON.stringify({
+    packageManager: "pnpm@11.19.0",
+    scripts: {
+      build: "tsc -b",
+      "build:extension": "node build.mjs",
+      test: "vitest run",
+      lint: "biome check .",
+    },
+  });
+
+  function scripts() {
+    const discovery = discoverVerificationScripts(manifest, ["pnpm-lock.yaml"]);
+    expect(discovery.ok).toBe(true);
+    if (!discovery.ok) throw new Error(discovery.reason);
+    return discovery.scripts;
+  }
+
+  function run(
+    kind: "build" | "tests",
+    scriptName: string,
+    exitCode: number | null = 0,
+  ): VerificationRunRecord {
+    const script = scripts().find((candidate) => candidate.name === scriptName);
+    if (script === undefined) throw new Error("missing script fixture");
+    return {
+      kind,
+      scriptName,
+      definitionHash: script.definitionHash,
+      runnerCommand: script.runnerCommand,
+      startedAt: "2026-08-30T01:00:00.000Z",
+      finishedAt: "2026-08-30T01:01:00.000Z",
+      exitCode,
+      startFingerprint: "proof-fingerprint",
+      endFingerprint: "proof-fingerprint",
+    };
+  }
+
+  it("discovers only supported root scripts and prefers packageManager", () => {
+    const discovery = discoverVerificationScripts(manifest, ["yarn.lock"]);
+    expect(discovery).toMatchObject({ ok: true, manager: "pnpm" });
+    if (!discovery.ok) return;
+    expect(discovery.scripts.map(({ kind, name }) => ({ kind, name }))).toEqual([
+      { kind: "build", name: "build" },
+      { kind: "build", name: "build:extension" },
+      { kind: "tests", name: "test" },
+    ]);
+    expect(discovery.scripts.every((script) => script.runnerCommand[1] === "run")).toBe(true);
+  });
+
+  it("requires an unambiguous supported lockfile when packageManager is absent", () => {
+    const withoutManager = JSON.stringify({ scripts: { build: "tsc" } });
+    expect(discoverVerificationScripts(withoutManager, ["pnpm-lock.yaml", "yarn.lock"])).toEqual({
+      ok: false,
+      reason: "A single pnpm, npm, or yarn lockfile is required.",
+    });
+    expect(discoverVerificationScripts(withoutManager, ["package-lock.json"])).toMatchObject({
+      ok: true,
+      manager: "npm",
+    });
+  });
+
+  it("renders the complete immutable verification preview", () => {
+    const script = scripts().find((candidate) => candidate.name === "build");
+    if (script === undefined) throw new Error("missing script fixture");
+    const preview = renderVerificationPreview({
+      packageJsonPath: "C:\\repo\\package.json",
+      cwd: "C:\\repo",
+      script,
+    });
+    expect(preview).toContain("**package.json:** C:\\repo\\package.json");
+    expect(preview).toContain("**Working directory:** C:\\repo");
+    expect(preview).toContain("**Package manager:** pnpm");
+    expect(preview).toContain("**Script name:** build");
+    expect(preview).toContain("**Script body:** `tsc -b`");
+    expect(preview).toContain("**Command:** `pnpm run build`");
+  });
+
+  it("maps exit results and fingerprint changes without false green", () => {
+    const passive = createPassiveProofReport(evidence(), openPr);
+    const passed = applyProofEvidence(passive, {
+      scripts: scripts(),
+      build: run("build", "build"),
+      tests: run("tests", "test"),
+    });
+    expect(passed.strips.build.status).toBe("passed");
+    expect(passed.strips.tests.status).toBe("passed");
+    expect(passed.technicalReadiness).toBe("ready-for-human-review");
+
+    expect(
+      applyProofEvidence(passive, {
+        scripts: scripts(),
+        build: run("build", "build", 1),
+      }).strips.build.status,
+    ).toBe("failed");
+    expect(
+      applyProofEvidence(passive, {
+        scripts: scripts(),
+        build: run("build", "build", null),
+      }).strips.build.status,
+    ).toBe("unverified");
+
+    const changedDuring = run("build", "build");
+    expect(
+      applyProofEvidence(passive, {
+        scripts: scripts(),
+        build: { ...changedDuring, startFingerprint: "different" },
+      }).strips.build.status,
+    ).toBe("unverified");
+
+    const changedLater = createPassiveProofReport(
+      evidence({ fingerprint: "new-workspace-fingerprint" }),
+      openPr,
+    );
+    expect(
+      applyProofEvidence(changedLater, {
+        scripts: scripts(),
+        build: run("build", "build"),
+      }).strips.build.status,
+    ).toBe("stale");
+  });
+
+  it("keeps unresolved proof visible when accepted and stales decisions after evidence changes", () => {
+    const passive = createPassiveProofReport(evidence(), openPr);
+    const accepted = applyProofEvidence(passive, {
+      scripts: scripts(),
+      humanDecision: createHumanDecision(
+        "accepted",
+        passive.technicalFingerprint,
+        new Date("2026-08-30T02:00:00.000Z"),
+      ),
+    });
+    expect(accepted.humanDecision.decision).toBe("accepted");
+    expect(accepted.strips["human-decision"].status).toBe("passed");
+    expect(accepted.unresolvedTechnicalStrips).toEqual(["build", "tests"]);
+
+    const changed = createPassiveProofReport(
+      evidence({ fingerprint: "changed-proof-fingerprint" }),
+      openPr,
+    );
+    const stale = applyProofEvidence(changed, {
+      scripts: scripts(),
+      humanDecision: accepted.humanDecision,
+    });
+    expect(stale.humanDecision.decision).toBe("stale");
+    expect(stale.strips["human-decision"].status).toBe("stale");
   });
 });
 
