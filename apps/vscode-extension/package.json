@@ -1,0 +1,118 @@
+{
+  "name": "taskchord",
+  "displayName": "TaskChord",
+  "description": "From issue to reviewed PR",
+  "version": "0.0.1",
+  "publisher": "taskchord",
+  "private": true,
+  "type": "module",
+  "preview": true,
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.134.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.cjs",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "files": [
+    "dist",
+    "media",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:integration": "pnpm build && tsx src/test/runTest.ts"
+  },
+  "dependencies": {
+    "@taskchord/contracts": "workspace:*",
+    "@taskchord/doctor": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.134.0",
+    "@vscode/test-electron": "3.1.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "taskchord.runDoctor",
+        "title": "Run Doctor",
+        "category": "TaskChord",
+        "icon": "$(pulse)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "taskchord-workbench",
+          "title": "TaskChord Workbench",
+          "icon": "media/taskchord.svg"
+        }
+      ]
+    },
+    "views": {
+      "taskchord-workbench": [
+        {
+          "id": "taskchord.setup",
+          "name": "Setup"
+        },
+        {
+          "id": "taskchord.work",
+          "name": "Work"
+        },
+        {
+          "id": "taskchord.proof",
+          "name": "Proof"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "taskchord.work",
+        "contents": "Work tracking will be added in a later TaskChord slice."
+      },
+      {
+        "view": "taskchord.proof",
+        "contents": "Proof collection will be added in a later TaskChord slice."
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "taskchord.runDoctor",
+          "when": "view == taskchord.setup",
+          "group": "navigation"
+        }
+      ]
+    },
+    "walkthroughs": [
+      {
+        "id": "taskchord.gettingStarted",
+        "title": "Get started with TaskChord",
+        "description": "Check the environment where TaskChord is running.",
+        "steps": [
+          {
+            "id": "taskchord.gettingStarted.runDoctor",
+            "title": "Check your environment",
+            "description": "Run the read-only environment check.\n[Run Doctor](command:taskchord.runDoctor)",
+            "media": {
+              "markdown": "media/walkthrough.md"
+            },
+            "completionEvents": [
+              "onCommand:taskchord.runDoctor"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@taskchord/workspace",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24.19.0 <25",
+    "pnpm": "11.19.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @taskchord/contracts build && pnpm --filter @taskchord/doctor build && pnpm --filter @taskchord/doctor-cli build && pnpm --filter taskchord build",
+    "typecheck": "pnpm --filter @taskchord/contracts build && pnpm --filter @taskchord/doctor build && pnpm -r --if-present typecheck",
+    "check": "biome check .",
+    "test:unit": "vitest run",
+    "test:extension": "pnpm --filter taskchord test:integration",
+    "validate": "pnpm check && pnpm typecheck && pnpm test:unit && pnpm build && pnpm test:extension"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.11",
+    "@types/node": "26.4.0",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}
