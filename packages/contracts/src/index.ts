@@ -6,7 +6,7 @@ export type CheckStatus = "ready" | "unverified" | "failed";
 
 export type DoctorCheckId = string;
 
-export type DoctorCheckSource = "runtime" | "process";
+export type DoctorCheckSource = "runtime" | "process" | "native-codex-doctor";
 
 export interface EnvironmentFacts {
   kind: EnvironmentKind;

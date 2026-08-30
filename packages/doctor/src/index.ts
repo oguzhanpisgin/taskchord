@@ -11,9 +11,12 @@ import {
   type EnvironmentFacts,
   type EnvironmentKind,
 } from "@taskchord/contracts";
+import { parseNativeCodexDoctor } from "./codexDoctor.js";
 import { nodeProcessProbe, type ProbeResult, type ProcessProbe } from "./probe.js";
 import { redactText, summarizeOutput } from "./redaction.js";
+import { discoverWslTargets } from "./wsl.js";
 
+export { parseNativeCodexDoctor } from "./codexDoctor.js";
 export type {
   ProbeCommand,
   ProbeOutcome,
@@ -23,6 +26,12 @@ export type {
 } from "./probe.js";
 export { deniedProcessProbe, filteredEnvironment, nodeProcessProbe } from "./probe.js";
 export { redactText, summarizeOutput } from "./redaction.js";
+export {
+  createWslProcessProbe,
+  discoverWslTargets,
+  parseWslDistributions,
+  toWslPath,
+} from "./wsl.js";
 
 export interface DoctorRuntime {
   platform(): string;
@@ -194,7 +203,12 @@ export function defaultChecks(): readonly CheckDefinition[] {
       source: "runtime",
       timeoutMs: 1_000,
       async run({ target }) {
-        const status: CheckStatus = target.kind === "unknown" ? "unverified" : "ready";
+        const status: CheckStatus =
+          target.kind === "unknown" ||
+          target.facts.release === "unknown" ||
+          target.facts.architecture === "unknown"
+            ? "unverified"
+            : "ready";
         return {
           status,
           message:
@@ -259,6 +273,74 @@ export function defaultChecks(): readonly CheckDefinition[] {
           status: "ready",
           message: "GitHub CLI has a usable stored session.",
           evidence: { authenticated: "yes" },
+        };
+      },
+    },
+    {
+      id: "codex-doctor",
+      label: "Codex Doctor",
+      source: "native-codex-doctor",
+      timeoutMs: 10_000,
+      async run(context) {
+        const version = await context.probe.run({
+          command: "codex",
+          args: ["--version"],
+          timeoutMs: 3_000,
+          signal: context.signal,
+        });
+        if (version.outcome !== "completed") {
+          return {
+            status: version.outcome === "not-found" ? "failed" : "unverified",
+            message:
+              version.outcome === "not-found"
+                ? "Codex CLI was not found on PATH."
+                : "Codex CLI availability could not be verified safely.",
+            evidence: { outcome: version.outcome },
+            nextAction: "Install or repair Codex CLI, then run Doctor again.",
+          };
+        }
+        if (version.exitCode !== 0) {
+          return {
+            status: "failed",
+            message: "Codex CLI returned an error while reporting its version.",
+            evidence: {},
+            nextAction: "Repair Codex CLI, then run Doctor again.",
+          };
+        }
+
+        const nativeDoctor = await context.probe.run({
+          command: "codex",
+          args: ["doctor", "--json"],
+          timeoutMs: 10_000,
+          signal: context.signal,
+        });
+        if (
+          nativeDoctor.outcome !== "completed" ||
+          (nativeDoctor.exitCode !== 0 && nativeDoctor.exitCode !== 1)
+        ) {
+          return {
+            status: "unverified",
+            message: "Native Codex Doctor could not complete safely.",
+            evidence: { outcome: nativeDoctor.outcome },
+            nextAction: "Run codex doctor manually, then run TaskChord Doctor again.",
+          };
+        }
+
+        const parsed = parseNativeCodexDoctor(nativeDoctor.stdout);
+        if (parsed === undefined) {
+          return {
+            status: "unverified",
+            message: "Native Codex Doctor returned an unrecognized report schema.",
+            evidence: { cliVersion: summarizeOutput(version.stdout) },
+            nextAction: "Update TaskChord or run codex doctor manually.",
+          };
+        }
+        return {
+          ...parsed,
+          evidence: {
+            cliVersion: summarizeOutput(version.stdout),
+            ...parsed.evidence,
+          },
         };
       },
     },
@@ -499,21 +581,43 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<DoctorRepo
       release,
     };
     const target = targetFor(environment);
+    const definitions = options.checks ?? defaultChecks();
+    const processProbe = options.probe ?? nodeProcessProbe;
+    const workspaceRoot = options.workspaceRoot ?? process.cwd();
     const checks = await executeChecks(
-      options.checks ?? defaultChecks(),
+      definitions,
       {
         target,
-        probe: options.probe ?? nodeProcessProbe,
-        workspaceRoot: options.workspaceRoot ?? process.cwd(),
+        probe: processProbe,
+        workspaceRoot,
       },
       options.concurrency ?? 4,
-      options.timeoutMs ?? 5_000,
+      options.timeoutMs ?? 10_000,
     );
+    const targets = [target];
+    if (environment.kind === "windows" && options.checks === undefined) {
+      const wslTargets = await discoverWslTargets(processProbe, workspaceRoot);
+      for (const wslTarget of wslTargets) {
+        targets.push(wslTarget.target);
+        checks.push(
+          ...(await executeChecks(
+            definitions,
+            {
+              target: wslTarget.target,
+              probe: wslTarget.probe,
+              workspaceRoot: wslTarget.workspaceRoot,
+            },
+            options.concurrency ?? 4,
+            options.timeoutMs ?? 10_000,
+          )),
+        );
+      }
+    }
     return {
       schemaVersion: DOCTOR_SCHEMA_VERSION,
       generatedAt,
       environment,
-      targets: [target],
+      targets,
       checks,
       summary: summarizeChecks(checks),
     };
