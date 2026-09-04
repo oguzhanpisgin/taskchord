@@ -1,0 +1,57 @@
+{
+  "$schema": "TASKCHORD QUALITY GATES STANDARD (installed from the user-level quality-gates skill, 2026-09-04). Single source of truth for the quality loop; the drift-guard tests in tests/quality-gates.guard.test.ts and the authoritative config files referenced below (package.json scripts, vitest.config.ts include patterns) MUST stay aligned. Changes require a new append-only decision record in docs/decisions/.",
+  "version": 1,
+  "ownerApproved": "2026-09-04",
+  "boyScoutRule": "Every touched file is left cleaner than it was found (small in-scope improvements allowed during any lane; anything larger becomes an out-of-scope finding with a re-entry trigger).",
+  "testLanes": {
+    "entry": "pnpm test:unit (vitest run; discovery scoped by the include patterns in vitest.config.ts)",
+    "fast": {
+      "script": "test:unit",
+      "command": "pnpm test:unit",
+      "minimums": { "testFiles": 17, "totalTests": 102 },
+      "mustBeGreen": true
+    },
+    "extension": {
+      "script": "test:extension",
+      "command": "pnpm test:extension",
+      "kind": "integration against the built extension",
+      "gatedBuildRequired": true
+    },
+    "validateChain": ["check", "typecheck", "test:unit", "build", "test:extension"],
+    "heavyToolingRule": "no dotnet in this repo; pnpm/vitest runs are light and need no cross-lane heavy-run coordination (if a dotnet tool is ever invoked here, run `dotnet build-server shutdown` after it)"
+  },
+  "staticGates": {
+    "linterFormatter": "biome via `pnpm check` (biome.json is authoritative); zero new findings on changed surfaces",
+    "typecheck": "typescript via `pnpm typecheck` (project references built through @taskchord/contracts first); no new type errors on changed surfaces",
+    "languageRules": [
+      "workspace packages communicate through @taskchord/* package contracts; no deep imports across package boundaries",
+      "no credential literals in source, config or tests; secrets come from the environment",
+      "public behavior of packages/proof and packages/work carries tests before it changes"
+    ]
+  },
+  "reviewGates": {
+    "adversarialReview": "independent review per candidate; writer != verifier; writer never commits/pushes (manager handoff)",
+    "reviewProtocol": "reviewer reads the full delta adversarially; unsandboxed lane run output is the evidence for tests/docs-only changes",
+    "writerVerifierSelection": "writer pool, model and effort selection come from C:/Users/OP/.agents/skills/capability-router/SKILL.md"
+  },
+  "securityGates": {
+    "dependencyAudit": {
+      "command": "pnpm audit",
+      "cadence": "per sweep + record tails even when clean"
+    },
+    "secretHygiene": "no credential literals in source/config/tests; secrets from environment or secret service"
+  },
+  "codeHealthSweep": {
+    "cadence": "after every accepted merge + at least monthly",
+    "checks": [
+      "biome cleanliness",
+      "dead + duplicate code scan",
+      "dependency vulnerability + freshness audit (pnpm audit, pnpm outdated)",
+      "clear-code/naming review"
+    ],
+    "outOfScopeFindings": "recorded one-line with a re-entry trigger"
+  },
+  "legacySweep": {
+    "principle": "existing code is held to the same gates as new code - package-by-package bounded slices"
+  }
+}
