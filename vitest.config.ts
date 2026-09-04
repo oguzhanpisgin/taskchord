@@ -25,6 +25,7 @@ export default defineConfig({
       "packages/**/*.test.ts",
       "apps/doctor-cli/**/*.test.ts",
       "apps/vscode-extension/src/**/*.test.ts",
+      "tests/**/*.test.ts",
     ],
     exclude: ["**/node_modules/**", "**/dist/**", "apps/vscode-extension/src/test/**"],
     coverage: {
